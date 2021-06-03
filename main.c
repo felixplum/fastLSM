@@ -173,7 +173,6 @@ void regress(float* risk_factors, float* target, float *params_out, size_t n_sam
                 }
             // printf("Params_j after update: "); print_vec(params_j, 3);
             // printf("Grad: "); print_vec(gradient_i, 3);
-            float a =1;
             
         }
     }
