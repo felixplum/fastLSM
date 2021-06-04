@@ -1,28 +1,27 @@
-#include<stdio.h>
+#include <stdio.h>
 #include <time.h>
 #include "linalg.h"
-#include <math.h> 
+#include <math.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <stdbool.h>
 
 const int N_SCENS = 10000;
-const int N_GRID = 32;
+const int N_GRID = 16;
 const int N_STEPS = 365;
 
-#define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
-
+#define NELEMS(x) (sizeof(x) / sizeof((x)[0]))
 
 // float continuation_value[num_days][N_GRID][N_SCENS];
 // float volumes[num_days][N_GRID];
 // float strike_out[num_days][N_SCENS];
 // float spots[num_days][N_SCENS];
 
-void init_volume_grid(floatMat* volumes) {
+void init_volume_grid(floatMat *volumes)
+{
     // Example swing contract: 0% ToP
     float DCQ_MIN = 0;
     float DCQ_MAX = 100;
-    float TCQ = 365*DCQ_MAX;
+    float TCQ = 365 * DCQ_MAX;
     float TCQ_MIN_FINAL = 0;
     float TCQ_MAX_FINAL = TCQ;
     float min_prev = TCQ;
@@ -31,30 +30,37 @@ void init_volume_grid(floatMat* volumes) {
     float incr;
     size_t n_steps = volumes->shape[0];
     size_t n_grid = volumes->shape[1];
-    for (size_t t_i = 0; t_i < n_steps; t_i++) {
+    for (size_t t_i = 0; t_i < n_steps; t_i++)
+    {
         // Only valid for Swing, i.e. withdrawal only
         min_curr = max(TCQ_MIN_FINAL, min_prev - DCQ_MAX);
         max_curr = min(TCQ_MAX_FINAL, max_prev - DCQ_MIN);
         min_prev = min_curr;
         max_prev = max_curr;
-        incr = (max_curr-min_curr) / (n_grid - 1);
-        float* v_start_arr = &(volumes->data[t_i*n_grid]);                     // TODO: Check if written correctly
-        for (int v_idx = 0; v_idx < n_grid; v_idx++) {
-            v_start_arr[v_idx] = min_curr + v_idx*incr;
+        incr = (max_curr - min_curr) / (n_grid - 1);
+        float *v_start_arr = &(volumes->data[t_i * n_grid]); // TODO: Check if written correctly
+        for (int v_idx = 0; v_idx < n_grid; v_idx++)
+        {
+            v_start_arr[v_idx] = min_curr + v_idx * incr;
             // if (t_i == 0) printf("Time %i: %.2f\n", t_i, v_start_arr[v_idx]);
         }
     }
 }
 
-void init_dummy_data(floatMat* strike_out, floatMat* spots) {
+void init_dummy_data(floatMat *strike_out, floatMat *spots)
+{
     size_t n_rows = spots->shape[0];
     size_t n_cols = spots->shape[1];
     //assert(n_cols == 1);
     for (size_t i = 0; i < n_rows; i++)
     {
-        spots->data[i*n_cols + 0] = 20. + 5*sin((float)i/365*2*M_PI);
-        strike_out->data[i*n_cols + 0]= 20.;
+        spots->data[i * n_cols + 0] = 20. + 1. * cos((float)i / 365 * 2 * M_PI);
+        strike_out->data[i * n_cols + 0] = 20.;
     }
+
+    // print_vec(spots->data, 365);
+    // print_vec(strike_out->data, 365);
+
 }
 
 // void compute_volume_interp_params(float* v0_in, float* v1_in, int* idx_offset_out, float* alpha_out) {
@@ -65,7 +71,8 @@ void init_dummy_data(floatMat* strike_out, floatMat* spots) {
 //     // first vector represents vector after a const. decision has been applied to all elements (e.g. one of DdCQ_MIN, DCQ_MAX)
 // }
 
-void test_regression() {
+void test_regression()
+{
     const size_t n_s = 1000;
     float rf[n_s];
     float target[n_s];
@@ -78,17 +85,14 @@ void test_regression() {
     //     noise = (rand() % 100) / 100.;;
     //     target[i] =  4.5*x_sample-70*x_sample*x_sample + 100.*noise;
     // }
-    
-    float params[3] = {0,0,0};
-    clock_t start, end;
-    double cpu_time_used;
-    start = clock();
+    float params[3] = {0, 0, 0};
+    // clock_t start, end;
+    // double cpu_time_used;
+    // start = clock();
     for (size_t i = 0; i < 1; i++)
     {
-        regress(rf, target, &params, n_s, 1, 2, false); 
+        regress(rf, target, &params, n_s, 1, 2, false);
     }
-
-        
     // end = clock();
     // cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     // printf("It took %.5f ms\n", 1000*cpu_time_used);
@@ -96,222 +100,58 @@ void test_regression() {
     // {
     //     printf("Param %i: %.2f \n", i, params[i]);
     // }
-    
 }
 
-void print_vec(float* vec, size_t length) {
-    for (size_t i = 0; i < length; i++)
+int interp(float *lookup_grid, size_t n_entries, float lookup_val, float *alpha_out, float *shift_out)
+{
+    if (lookup_val > lookup_grid[n_entries - 1] || lookup_val < lookup_grid[0])
     {
-        printf("%.3f, ",vec[i]);
-    }
-    printf("\n");
-}
-
-void norm_vec(float* vec, size_t length) {
-    float sum_sq = 0.;
-    for (size_t i = 0; i < length; i++)
-    {
-        /* code */
-        sum_sq += vec[i]*vec[i];
-    }
-    sum_sq = sqrt(sum_sq);
-    for (size_t i = 0; i < length; i++)
-    {
-        /* code */
-        vec[i] = (vec[i]+1e-10)/(sum_sq+1e-10);
-    }    
-}
-
-void regress(float* risk_factors, float* target, float *params_out,
-             size_t n_samples, size_t n_rf, size_t order, bool map_data) {
-    // risk_factos is [n_sim x n_rf] matrix, where risk factors are not exponentiated
-    // Computes the optimal parameters via stoch. gradient descent
-    
-    size_t n_params = n_rf*(order+1);
-    float* rf_i;
-    float target_i, rf_i_j;
-    float* gradient_i = (float*)calloc(n_params, sizeof(float));
-    float* gradient_i_j = (float*)calloc(n_params, sizeof(float));
-    float* regressors_i = (float*)calloc(n_params, sizeof(float));
-    float* regressors_i_j, *params_j;
-    float target_predict;
-    float pred_error_i;
-    size_t batch_size = 1;
-    float grad_sum_sq = 0.;
-    float learning_rate = 0.5;
-    // float lr_decay = 0.99;
-    float lr_decay = pow(0.01, 1./((float)n_samples));
-    
-    // Numerical conditioning
-    float target_scale = 1. / max_vec(target, n_samples);
-    float rf_scale =  1. / max_vec(risk_factors, n_samples);
-
-    // Iterate over all samples
-    for (size_t i = 0; i < n_samples; i++)
-    {
-        // Compute gradient for current sample
-        target_i = target[i] * target_scale;
-        rf_i = &(risk_factors[i*n_rf]); // points to rows containing rf at sample i
-        target_predict = 0;
-        // For each risk factor, build polynomial of order "order"
-        for (size_t j = 0; j < n_rf; j++)
-        {
-            // target_i = p0_0 + p1_0*rf_i_0 + p2*rf_i_0² ... p0_1 + p1_1*rf_i_1 + p2*rf_i_1² +  =: f(p)
-            // Cost J(p) = (target_i-f(p))²
-            // dJ(p)/dp = -2*(target_i-f(p))*(df(p)/dp)
-            // With df(p)/dp =  [1, rf_i_0, rf_i_0², 1, rf_i_1, rf_i_1², ...]
-
-            // Pointers to current rf's polynomial for convencience
-            rf_i_j = rf_i[j]*rf_scale;
-            regressors_i_j = &(regressors_i[j*(order+1)]);
-            params_j = &(params_out[j*(order+1)]);
-            // gradient_i_j = &(gradient_i[j*(order+1)]); 
-
-            // Build regressor (= gradient) + eval function
-            regressors_i_j[0] = 1.; // const. term, i.e. p0_i
-            target_predict += params_j[0];
-            for (size_t order_k = 1; order_k < order+1; order_k++)
-            {
-                regressors_i_j[order_k] = regressors_i_j[order_k-1]*rf_i_j;
-                target_predict += params_j[order_k]*regressors_i_j[order_k];
-            }
-        }
-        // printf("Target pred: %2.f; target: %.2f, cost: %.2f\n", target_predict, target_i, (target_predict-target_i)*(target_predict-target_i));
-        // printf("Regressors: "); print_vec(regressors_i_j, 3);
-        // printf("Params: "); print_vec(params_j, 3);
-
-        // Now compute final gradient, i.e. -2*(target_i-f(p))*(df(p)/dp)
-        pred_error_i = 2*(target_predict-target_i);
-        grad_sum_sq = 0.;
-        // Compute magnitude of current gradient
-        for (size_t param_idx = 0; param_idx < n_params; param_idx++)
-        {
-            gradient_i_j[param_idx] = regressors_i[param_idx]*pred_error_i;
-            //grad_sum_sq += gradient_i_j[param_idx]*gradient_i_j[param_idx];
-        }
-        // Second pass: Update global gradient with normalized gradient
-        // grad_sum_sq = sqrt(grad_sum_sq);
-        for (size_t param_idx = 0; param_idx < n_params; param_idx++)
-        {
-            gradient_i[param_idx] +=  (gradient_i_j[param_idx]+1e-8);
-        }
-        // printf("Grad tmp: "); print_vec(gradient_i_j, 3);
-        // Do parameter step with accumulated gradient
-        if ((i % batch_size) == 0) {
-            learning_rate *= lr_decay;
-            //norm_vec(gradient_i, n_params);
-            // printf("Batch grad: "); print_vec(gradient_i, 3);
-            // printf("Params_j before update: "); print_vec(params_j, 3);
-            for (size_t param_idx = 0; param_idx < n_params; param_idx++)
-                {
-                    params_out[param_idx] -=  learning_rate*gradient_i[param_idx];
-                    gradient_i[param_idx] = 0.; // reset
-                }
-            // printf("Params_j after update: "); print_vec(params_j, 3);
-            // printf("LR %.3f\n", learning_rate);
-            float a = 1;
-            // printf("Grad: "); print_vec(gradient_i, 3);
-        }
-        // printf("\n_________________\n");
-    }
-    // Do final iteration; access average error
-    
-    // Rescale parameters
-    scale_vec(params_out, n_params, 1./target_scale);
-    
-    // Plot
-    if (false) {
-        float error = 0.;
-        float diff;
-        int k = 0;
-        float pred_i;
-        float x_;
-
-        FILE * temp = fopen("data.temp", "w");
-
-        for(int i=0; i < n_samples; i++) {
-            x_ = risk_factors[i] *  rf_scale;
-            pred_i = params_out[0] + params_out[1]*x_
-                    + params_out[2]*x_*x_;
-            diff = pred_i - target[i];
-            error += diff*diff;
-            fprintf(temp, "%lf %lf %lf\n", x_, target[i], pred_i);
-        }
-        fclose(temp);  
-
-        FILE *gnuplot = popen("gnuplot -persistent", "w");
-        // fprintf(gnuplot, "set style line 3 lt 1 lw 3 pt 3 lc rgb 'blue'\n");
-        // fprintf(gnuplot, "set style line 2 lc rgb 'blue'\n");
-        fprintf(gnuplot, "plot 'data.temp' using 1:3 lc rgb 'black'\n");
-        fprintf(gnuplot, "replot 'data.temp' using 1:2 lc rgb 'red'\n");
-        fflush(gnuplot);
-
-
-        error = sqrt(error/n_samples);
-        printf("MSE: %.3f\n", error);    
-    }
-
-    // Apply regression coeff. to original data
-    if (map_data) {
-        assert(n_rf==1);
-        float x_;
-        for(int i=0; i < n_samples; i++) {
-            // TODO: Do in generic way
-            x_ = rf_scale*risk_factors[i];
-            target[i] = params_out[0];
-            for (size_t k = 1; k < n_params; k++)
-            {
-                target[i] += params_out[k]*pow(x_, k);
-            }
-        }
-    }
-
-    // cleanup
-    free(gradient_i);
-    free(gradient_i_j);
-    free(regressors_i_j);
-
-}
-
-
-
-int interp(float* lookup_grid, size_t n_entries, float lookup_val, float* alpha_out, int* shift_out) {
-    if (lookup_val > lookup_grid[n_entries-1] || lookup_val < lookup_grid[0] ) {
-        return 1; // continuation value is 0, since volume out of bounds / not permitted
-    } else if (lookup_val == lookup_grid[n_entries-1] ) {
-        *alpha_out = 1.;
+        *alpha_out = 0.;
         *shift_out = -1;
+        return 1; // continuation value is 0, since volume out of bounds / not permitted
+    }
+    else if (lookup_val == lookup_grid[n_entries - 1])
+    {
+        *alpha_out = 1.;
+        *shift_out = n_entries - 2;
         return 0;
     }
     size_t i;
-    for (i = 0; i < n_entries; i++)
+    for (i = 0; i < n_entries; ++i)
     {
-        if (lookup_val >= lookup_grid[i]) {
+        if (lookup_val >= lookup_grid[i] && lookup_val < lookup_grid[i+1])
+        {
             break;
         }
     }
-    *alpha_out = (lookup_val - lookup_grid[i]) / (lookup_grid[i+1] - lookup_grid[i]);
+    *alpha_out = (lookup_val - lookup_grid[i]) / (lookup_grid[i + 1] - lookup_grid[i]);
     *shift_out = i;
     return 0;
     //target_grid[i] + alpha * (target_grid[i+1]  - target_grid[i] );
 }
 
-void compute_immediate_returns(float* spots_t, float* strikes_t, const float* decisions_t, float* result,
-                               size_t n_scens, size_t n_decisions) {
+void compute_immediate_payoff(float *spots_t, float *strikes_t, const float *decisions_t, float *result,
+                              size_t n_scens, size_t n_decisions)
+{
+    // Stores dv*(S_i-K_i) in matrix of dim [n_dec x n_scens]
     float decision;
     for (size_t i_dec = 0; i_dec < n_decisions; i_dec++)
     {
         decision = decisions_t[i_dec];
         for (size_t i_scen = 0; i_scen < n_scens; i_scen++)
         {
-            result[i_dec*n_scens + i_scen] = decision*(spots_t[i_scen] - strikes_t[i_scen]);
-        } 
+            // withdrawal of decision of -100 ITM leads to positive payoff -300*(strike-spot) = 300 * (spot - strike)
+            result[i_dec * n_scens + i_scen] = decision * (strikes_t[i_scen] - spots_t[i_scen]);
+        }
+        // print_vec(&(result[i_dec*n_scens]), n_scens);
     }
 }
 
-void compute_volume_interp_lookup(float* volumes_t, float* volumes_t_next, float* decisions, float* result, size_t n_grid, size_t n_dec) {
+void compute_volume_interp_lookup(float *volumes_t, float *volumes_t_next, float *decisions, float *result, size_t n_grid, size_t n_dec)
+{
     // Computes scale and offset for all [volume state X decision] from grid(t) -> grid(t+1)
     // These coefficients can then be used to interpolate between the respective continuation values
+    // result[0] := alpha; result[1] = offset
     float v_lookup;
     float alpha_interp;
     int offset_interp;
@@ -320,101 +160,110 @@ void compute_volume_interp_lookup(float* volumes_t, float* volumes_t_next, float
         for (size_t dec_i = 0; dec_i < n_dec; dec_i++)
         {
             v_lookup = volumes_t[v_i] + decisions[dec_i];
-            result[dec_i] = interp(volumes_t_next, n_grid, v_lookup, &alpha_interp, &offset_interp);            // TODO
-            // TODO
+            interp(volumes_t_next, n_grid, v_lookup, &(result[v_i * n_dec * 2 + 2*dec_i]), &(result[v_i * n_dec * 2 + 2*dec_i + 1]));
         }
     }
 }
 
-void optimize(floatMat* continuation_value, floatMat* volumes,
-              floatMat* strike_out, floatMat*spots) {
-    // continuation_value: [steps * grid_size * scens] 
-    // volumes: [steps * grid_size] Hold the allowed volumes, discretized 
-    // strike, spot: [steps * scens] 
+void optimize(floatMat *continuation_value, floatMat *volumes,
+              floatMat *strike_out, floatMat *spots)
+{
+    // continuation_value: [steps * grid_size * scens]
+    // volumes: [steps * grid_size] Hold the allowed volumes, discretized
+    // strike, spot: [steps * scens]
 
     size_t n_days = spots->shape[0];
-    size_t n_scens = spots->shape[1]; 
+    size_t n_scens = spots->shape[1];
     size_t n_grid = volumes->shape[1];
 
     // These point to the matrices at time t
-    float *cont_t, *cont_t_next, *volumes_t, *volumes_t_next, *strikes_t, *spots_t, *immediate_returns_t;
+    float *cont_t, *cont_t_next, *volumes_t, *volumes_t_next, *strikes_t,
+            *spots_t, *immediate_returns_t, *expected_cont_value_t;
     // tmp vars:
     float payoff_t_i;
 
     // Last entries set; now do backward iteration
     //////////////////////////////////////////////////
     float v_t, v_t_next;
-    const int n_decisions = 2;
-    const float decisions[2] = {0, -300};                                                                                 // ONLY FOR TESTING
-    float expected_value[2];
-    floatMat* cont_t_tmp[2];
-    cont_t_tmp[0] = calloc_2D_fmat(continuation_value->shape[0], continuation_value->shape[1], "cont tmp0");
-    cont_t_tmp[1] = calloc_2D_fmat(continuation_value->shape[0], continuation_value->shape[1], "cont tmp1");
-    floatMat* immediate_returns = calloc_3D_fmat(n_days, n_scens, n_decisions, "Immediate returns");
-    floatMat* interps_tmp = calloc_3D_fmat(n_grid, n_decisions, 2, "tmp");
-    for (int t_i = n_days-2; t_i >= 0; t_i--) {
+    int n_decisions = 2;
+    float decisions[2] = {0, -300}; // ONLY FOR TESTING
+    floatMat *expected_values = calloc_2D_fmat(n_days, n_grid, "Expected continuation value per (t,v_k)");
+    floatMat *immediate_returns = calloc_3D_fmat(n_days, n_scens, n_decisions, "Immediate returns");
+    floatMat *interps_cache = calloc_3D_fmat(n_grid, n_decisions, 2, "tmp");
+    for (int t_i = n_days - 2; t_i >= 0; t_i--)
+    {
         // Starting from volume level vector v_i [n_grid] at time t_i, compute
-        // the two volume vectors v_dcq0_i+1, v_dcq1_i+1 that result from either 
+        // the two volume vectors v_dcq0_i+1, v_dcq1_i+1 that result from either
         // taking DCQ_0 or DCQ_1. Per vector, we can compute a set of interpolation params
-        // Telling us how to interpolate between two sets of continuation value scenarios, in order 
+        // Telling us how to interpolate between two sets of continuation value scenarios, in order
         // To obtain a set of continuation value scenarios per volume level
 
         // To each set, we add the immediate payoff resulting from DCQ_0 or DCQ1
         // Per decision, we obtain an immediate payoff-per-scenario
-        strikes_t = &(strike_out->data[t_i*n_scens]);
-        spots_t = &(spots->data[t_i*n_scens]);
-        volumes_t = &(volumes->data[t_i*n_grid]);
-        volumes_t_next = &(volumes->data[(t_i+1)*n_grid]);
-        cont_t = &(continuation_value->data[(t_i)*n_scens*n_grid]);
-        cont_t_next = &(continuation_value->data[(t_i+1)*n_scens*n_grid]);
-        immediate_returns_t = &(immediate_returns->data[(t_i)*n_scens*n_decisions]);
-        compute_immediate_returns(spots_t, strikes_t, decisions, immediate_returns_t, n_scens, n_decisions);
+        strikes_t = &(strike_out->data[t_i * n_scens]);
+        spots_t = &(spots->data[t_i * n_scens]);
+        volumes_t = &(volumes->data[t_i * n_grid]);
+        expected_cont_value_t = &(expected_values->data[t_i * n_grid]);
+        volumes_t_next = &(volumes->data[(t_i + 1) * n_grid]);
+        cont_t = &(continuation_value->data[(t_i)*n_scens * n_grid]);
+        cont_t_next = &(continuation_value->data[(t_i + 1) * n_scens * n_grid]);
+        immediate_returns_t = &(immediate_returns->data[(t_i)*n_scens * n_decisions]);
+        // print_vec(volumes_t, n_grid);
+        // print_vec(volumes_t_next, n_grid);
+
+        compute_immediate_payoff(spots_t, strikes_t, decisions, immediate_returns_t, n_scens, n_decisions);
         float alpha_interp;
         int offset_interp;
-        float cont_val_tmp;
-        compute_volume_interp_lookup(volumes_t, volumes_t_next, decisions, interps_tmp->data, n_grid, n_decisions); // TODO: pass correct result
+        float cont_val_i;
+        float max_value, max_dec;
+        compute_volume_interp_lookup(volumes_t, volumes_t_next, decisions, interps_cache->data, n_grid, n_decisions);
         // Iterate over state space, i.e. volume grid at time t
-        for (size_t v_i = 0; v_i < n_grid; v_i++) {
+        // int interp_idx;
+        for (size_t v_i = 0; v_i < n_grid; v_i++)
+        {
             v_t = volumes_t[v_i];
-
             test_regression();
-            for (size_t scen_i = 0;  scen_i < n_scens; scen_i++) {
-                // expected_value[0] = 0.;
+            for (size_t scen_i = 0; scen_i < n_scens; scen_i++)
+            {
                 // expected_value[1] = 0.;
-                float max_value = -1e10;
-                float max_dec = 0.;
-                for (size_t dec_i = 0; dec_i < 2; dec_i++) {
-                    v_t_next = v_t + decisions[dec_i];
-                    //if (interp(volumes_t_next, n_grid, v_t_next, &alpha_interp, &offset_interp) == 0) { // TODO: Put interpolation in outer loop
-                        cont_val_tmp = cont_t_next[v_i*n_scens + scen_i + offset_interp] + 
-                        alpha_interp*(cont_t_next[v_i*n_scens + scen_i + offset_interp+1]-cont_t_next[v_i*n_scens + scen_i + offset_interp]);
-                        payoff_t_i = immediate_returns_t[dec_i*n_scens+dec_i];
-                        //cont_t_tmp[dec_i]->data[v_i*n_scens + scen_i] = cont_val_tmp + payoff_t_i;                                                TODO
-                        if ((cont_val_tmp + payoff_t_i) >  max_value) {
-                            max_value = cont_val_tmp + payoff_t_i;
+                max_value = -1e10;
+                for (size_t dec_i = 0; dec_i < 2; dec_i++)
+                {
+                    alpha_interp = interps_cache->data[v_i * n_decisions * 2 + dec_i*2];
+                    offset_interp = interps_cache->data[v_i * n_decisions * 2 + dec_i*2 + 1];
+                    if (offset_interp > 0 ) {
+                        v_t_next = v_t + decisions[dec_i];
+                        cont_val_i = cont_t_next[offset_interp * n_scens + scen_i] +
+                                    alpha_interp * (cont_t_next[(offset_interp+1) * n_scens + scen_i] - cont_t_next[offset_interp * n_scens + scen_i]);
+                        payoff_t_i = immediate_returns_t[dec_i * n_scens + scen_i];
+                        // printf("%.2f %.2f %.2f\n",v_t_next,cont_val_i, payoff_t_i);
+                        if ((cont_val_i + payoff_t_i) > max_value)
+                        {
+                            max_value = cont_val_i + payoff_t_i;
                             max_dec = decisions[dec_i];
                         }
-                    //}
+                    } else {
+                        // Lookup failed, i.e. outside of grid
+                    }
+
                 }
-                
+                // update continuation for current volume and time in-place
+                cont_t[v_i * n_scens + scen_i] = max_value;
+                expected_cont_value_t[v_i] += max_value;
             }
-
-            if (expected_value[0] > expected_value[1]) {
-                // first action led to better expected value, apply & update continuation value
-            }
-            //printf("%.2f, %.2f", expected_value[0], expected_value[1]);
-            
-
+            expected_cont_value_t[v_i] /= (float)(n_scens);
         }
-
-
+        // print_vec(expected_cont_value_t, n_grid);
     }
+    // print_2d_mat(expected_values);
     free_mat(immediate_returns);
-    free_mat(interps_tmp);
+    free_mat(interps_cache);
+    free_mat(expected_values);
 }
 
-// 
-int main() {
+//
+int main()
+{
 
     // test_regression();
     // exit(0);
@@ -422,11 +271,10 @@ int main() {
     double cpu_time_used;
     start = clock();
     /////////////////
-    floatMat* continuation_value = calloc_3D_fmat(N_STEPS, N_GRID, N_SCENS, "Continuation value");
-    floatMat* volumes = calloc_2D_fmat(N_STEPS, N_GRID, "Volumes");
-    floatMat* strike_out = calloc_2D_fmat(N_STEPS, N_SCENS, "Strikes");
-    floatMat* spots = calloc_2D_fmat(N_STEPS, N_SCENS, "Spots");
-
+    floatMat *continuation_value = calloc_3D_fmat(N_STEPS, N_GRID, N_SCENS, "Continuation value");
+    floatMat *volumes = calloc_2D_fmat(N_STEPS, N_GRID, "Volumes");
+    floatMat *strike_out = calloc_2D_fmat(N_STEPS, N_SCENS, "Strikes");
+    floatMat *spots = calloc_2D_fmat(N_STEPS, N_SCENS, "Spots");
 
     // print_2d_mat(retMat);
     init_dummy_data(strike_out, spots);
@@ -437,35 +285,33 @@ int main() {
 
     // /////////////////
     end = clock();
-    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-    printf("It took %.5f ms", 1000*cpu_time_used);
+    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+    printf("It took %.5f ms", 1000 * cpu_time_used);
 
     free_mat(continuation_value);
     free_mat(volumes);
-    // free_mat(strike_out);
-    // free_mat(spots);
+    free_mat(strike_out);
+    free_mat(spots);
     return 0;
 }
 
-
-
-    // Initialize continuation value at last day
-    ////////////////////////////////////////////////////
-    // strikes_t = &(strike_out->data[(n_days-1)*n_scens]);
-    // spots_t = &(spots->data[(n_days-1)*n_scens]);
-    // cont_t = &(continuation_value->data[(n_days-1)*n_scens*n_grid]);
-    // for (size_t scen_i = 0; scen_i < n_scens; scen_i++)
-    // {
-    //     // Determine payoff; max(0, spot-strike)
-    //     if (spots_t[scen_i] > strikes_t[scen_i]) {
-    //         payoff_t_i = spots_t[scen_i] - strikes_t[scen_i];
-    //     } else {
-    //         payoff_t_i = 0.;
-    //     }
-    //     // For all volume levels, we'll have the same continuation value
-    //     for (size_t v_i = 0; v_i < n_grid; v_i++)
-    //     {
-    //         cont_t[v_i*n_scens + scen_i] = payoff_t_i;
-    //     }
-    // }
-    // print_2d_(cont_t, n_grid, n_scens);
+// Initialize continuation value at last day
+////////////////////////////////////////////////////
+// strikes_t = &(strike_out->data[(n_days-1)*n_scens]);
+// spots_t = &(spots->data[(n_days-1)*n_scens]);
+// cont_t = &(continuation_value->data[(n_days-1)*n_scens*n_grid]);
+// for (size_t scen_i = 0; scen_i < n_scens; scen_i++)
+// {
+//     // Determine payoff; max(0, spot-strike)
+//     if (spots_t[scen_i] > strikes_t[scen_i]) {
+//         payoff_t_i = spots_t[scen_i] - strikes_t[scen_i];
+//     } else {
+//         payoff_t_i = 0.;
+//     }
+//     // For all volume levels, we'll have the same continuation value
+//     for (size_t v_i = 0; v_i < n_grid; v_i++)
+//     {
+//         cont_t[v_i*n_scens + scen_i] = payoff_t_i;
+//     }
+// }
+// print_2d_(cont_t, n_grid, n_scens);

@@ -1,0 +1,322 @@
+        -:    0:Source:/home/felix/Desktop/fastLSM/main.c
+        -:    0:Graph:main.gcno
+        -:    0:Data:main.gcda
+        -:    0:Runs:2
+        -:    0:Programs:1
+        -:    1:#include <stdio.h>
+        -:    2:#include <time.h>
+        -:    3:#include "linalg.h"
+        -:    4:#include <math.h>
+        -:    5:#include <stdlib.h>
+        -:    6:#include <assert.h>
+        -:    7:
+        -:    8:const int N_SCENS = 1000;
+        -:    9:const int N_GRID = 128;
+        -:   10:const int N_STEPS = 20;
+        -:   11:
+        -:   12:#define NELEMS(x) (sizeof(x) / sizeof((x)[0]))
+        -:   13:
+        -:   14:// float continuation_value[num_days][N_GRID][N_SCENS];
+        -:   15:// float volumes[num_days][N_GRID];
+        -:   16:// float strike_out[num_days][N_SCENS];
+        -:   17:// float spots[num_days][N_SCENS];
+        -:   18:
+        2:   19:void init_volume_grid(floatMat *volumes)
+        -:   20:{
+        -:   21:    // Example swing contract: 0% ToP
+        2:   22:    float DCQ_MIN = 0;
+        2:   23:    float DCQ_MAX = 100;
+        2:   24:    float TCQ = 365 * DCQ_MAX;
+        2:   25:    float TCQ_MIN_FINAL = 0;
+        2:   26:    float TCQ_MAX_FINAL = TCQ;
+        2:   27:    float min_prev = TCQ;
+        2:   28:    float max_prev = TCQ;
+        -:   29:    float min_curr, max_curr;
+        -:   30:    float incr;
+        2:   31:    size_t n_steps = volumes->shape[0];
+        2:   32:    size_t n_grid = volumes->shape[1];
+       42:   33:    for (size_t t_i = 0; t_i < n_steps; t_i++)
+        -:   34:    {
+        -:   35:        // Only valid for Swing, i.e. withdrawal only
+       40:   36:        min_curr = max(TCQ_MIN_FINAL, min_prev - DCQ_MAX);
+       40:   37:        max_curr = min(TCQ_MAX_FINAL, max_prev - DCQ_MIN);
+       40:   38:        min_prev = min_curr;
+       40:   39:        max_prev = max_curr;
+       40:   40:        incr = (max_curr - min_curr) / (n_grid - 1);
+       40:   41:        float *v_start_arr = &(volumes->data[t_i * n_grid]); // TODO: Check if written correctly
+     5160:   42:        for (int v_idx = 0; v_idx < n_grid; v_idx++)
+        -:   43:        {
+     5120:   44:            v_start_arr[v_idx] = min_curr + v_idx * incr;
+        -:   45:            // if (t_i == 0) printf("Time %i: %.2f\n", t_i, v_start_arr[v_idx]);
+        -:   46:        }
+        -:   47:    }
+        2:   48:}
+        -:   49:
+        2:   50:void init_dummy_data(floatMat *strike_out, floatMat *spots)
+        -:   51:{
+        2:   52:    size_t n_rows = spots->shape[0];
+        2:   53:    size_t n_cols = spots->shape[1];
+        -:   54:    //assert(n_cols == 1);
+       42:   55:    for (size_t i = 0; i < n_rows; i++)
+        -:   56:    {
+       40:   57:        spots->data[i * n_cols + 0] = 20. + 1. * cos((float)i / 365 * 2 * M_PI);
+       40:   58:        strike_out->data[i * n_cols + 0] = 20.;
+        -:   59:    }
+        -:   60:
+        -:   61:    // print_vec(spots->data, 365);
+        -:   62:    // print_vec(strike_out->data, 365);
+        -:   63:
+        2:   64:}
+        -:   65:
+        -:   66:// void compute_volume_interp_params(float* v0_in, float* v1_in, int* idx_offset_out, float* alpha_out) {
+        -:   67://     // such that v0[i+offset] = alpha * v1[i + offset] + (1-alpha)*v1(i + offset+1)
+        -:   68://     // Assumes equidistant grid
+        -:   69://     // Called once per time-step
+        -:   70://     // Can then be used to compute interpolated continuation value between two vectors;
+        -:   71://     // first vector represents vector after a const. decision has been applied to all elements (e.g. one of DdCQ_MIN, DCQ_MAX)
+        -:   72:// }
+        -:   73:
+     4864:   74:void test_regression()
+     4864:   75:{
+     4864:   76:    const size_t n_s = 1000;
+     4864:   77:    float rf[n_s];
+     4864:   78:    float target[n_s];
+        -:   79:    // srand(4711);
+        -:   80:    float x_sample, noise;
+        -:   81:    // for (size_t i = 0; i < n_s; i++)
+        -:   82:    // {
+        -:   83:    //     x_sample = (rand() % 30);
+        -:   84:    //     rf[i] = x_sample;
+        -:   85:    //     noise = (rand() % 100) / 100.;;
+        -:   86:    //     target[i] =  4.5*x_sample-70*x_sample*x_sample + 100.*noise;
+        -:   87:    // }
+     4864:   88:    float params[3] = {0, 0, 0};
+        -:   89:    // clock_t start, end;
+        -:   90:    // double cpu_time_used;
+        -:   91:    // start = clock();
+     9728:   92:    for (size_t i = 0; i < 1; i++)
+        -:   93:    {
+     4864:   94:        regress(rf, target, &params, n_s, 1, 2, false);
+        -:   95:    }
+        -:   96:    // end = clock();
+        -:   97:    // cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+        -:   98:    // printf("It took %.5f ms\n", 1000*cpu_time_used);
+        -:   99:    // for (size_t i = 0; i < 3; i++)
+        -:  100:    // {
+        -:  101:    //     printf("Param %i: %.2f \n", i, params[i]);
+        -:  102:    // }
+     4864:  103:}
+        -:  104:
+     9728:  105:int interp(float *lookup_grid, size_t n_entries, float lookup_val, float *alpha_out, float *shift_out)
+        -:  106:{
+     9728:  107:    if (lookup_val > lookup_grid[n_entries - 1] || lookup_val < lookup_grid[0])
+        -:  108:    {
+     1568:  109:        *alpha_out = 0.;
+     1568:  110:        *shift_out = -1;
+     1568:  111:        return 1; // continuation value is 0, since volume out of bounds / not permitted
+        -:  112:    }
+     8160:  113:    else if (lookup_val == lookup_grid[n_entries - 1])
+        -:  114:    {
+       38:  115:        *alpha_out = 1.;
+       38:  116:        *shift_out = n_entries - 2;
+       38:  117:        return 0;
+        -:  118:    }
+        -:  119:    size_t i;
+   502494:  120:    for (i = 0; i < n_entries; ++i)
+        -:  121:    {
+   502494:  122:        if (lookup_val >= lookup_grid[i] && lookup_val < lookup_grid[i+1])
+        -:  123:        {
+     8122:  124:            break;
+        -:  125:        }
+        -:  126:    }
+     8122:  127:    *alpha_out = (lookup_val - lookup_grid[i]) / (lookup_grid[i + 1] - lookup_grid[i]);
+     8122:  128:    *shift_out = i;
+     8122:  129:    return 0;
+        -:  130:    //target_grid[i] + alpha * (target_grid[i+1]  - target_grid[i] );
+        -:  131:}
+        -:  132:
+       38:  133:void compute_immediate_payoff(float *spots_t, float *strikes_t, const float *decisions_t, float *result,
+        -:  134:                              size_t n_scens, size_t n_decisions)
+        -:  135:{
+        -:  136:    // Stores dv*(S_i-K_i) in matrix of dim [n_dec x n_scens]
+        -:  137:    float decision;
+      114:  138:    for (size_t i_dec = 0; i_dec < n_decisions; i_dec++)
+        -:  139:    {
+       76:  140:        decision = decisions_t[i_dec];
+    76076:  141:        for (size_t i_scen = 0; i_scen < n_scens; i_scen++)
+        -:  142:        {
+        -:  143:            // withdrawal of decision of -100 ITM leads to positive payoff -300*(strike-spot) = 300 * (spot - strike)
+    76000:  144:            result[i_dec * n_scens + i_scen] = decision * (strikes_t[i_scen] - spots_t[i_scen]);
+        -:  145:        }
+        -:  146:        // print_vec(&(result[i_dec*n_scens]), n_scens);
+        -:  147:    }
+       38:  148:}
+        -:  149:
+       38:  150:void compute_volume_interp_lookup(float *volumes_t, float *volumes_t_next, float *decisions, float *result, size_t n_grid, size_t n_dec)
+        -:  151:{
+        -:  152:    // Computes scale and offset for all [volume state X decision] from grid(t) -> grid(t+1)
+        -:  153:    // These coefficients can then be used to interpolate between the respective continuation values
+        -:  154:    // result[0] := alpha; result[1] = offset
+        -:  155:    float v_lookup;
+        -:  156:    float alpha_interp;
+        -:  157:    int offset_interp;
+     4902:  158:    for (size_t v_i = 0; v_i < n_grid; v_i++)
+        -:  159:    {
+    14592:  160:        for (size_t dec_i = 0; dec_i < n_dec; dec_i++)
+        -:  161:        {
+     9728:  162:            v_lookup = volumes_t[v_i] + decisions[dec_i];
+     9728:  163:            interp(volumes_t_next, n_grid, v_lookup, &(result[v_i * n_dec * 2 + 2*dec_i]), &(result[v_i * n_dec * 2 + 2*dec_i + 1]));
+        -:  164:        }
+        -:  165:    }
+       38:  166:}
+        -:  167:
+        2:  168:void optimize(floatMat *continuation_value, floatMat *volumes,
+        -:  169:              floatMat *strike_out, floatMat *spots)
+        -:  170:{
+        -:  171:    // continuation_value: [steps * grid_size * scens]
+        -:  172:    // volumes: [steps * grid_size] Hold the allowed volumes, discretized
+        -:  173:    // strike, spot: [steps * scens]
+        -:  174:
+        2:  175:    size_t n_days = spots->shape[0];
+        2:  176:    size_t n_scens = spots->shape[1];
+        2:  177:    size_t n_grid = volumes->shape[1];
+        -:  178:
+        -:  179:    // These point to the matrices at time t
+        -:  180:    float *cont_t, *cont_t_next, *volumes_t, *volumes_t_next, *strikes_t,
+        -:  181:            *spots_t, *immediate_returns_t, *expected_cont_value_t;
+        -:  182:    // tmp vars:
+        -:  183:    float payoff_t_i;
+        -:  184:
+        -:  185:    // Last entries set; now do backward iteration
+        -:  186:    //////////////////////////////////////////////////
+        -:  187:    float v_t, v_t_next;
+        2:  188:    int n_decisions = 2;
+        2:  189:    float decisions[2] = {0, -300}; // ONLY FOR TESTING
+        2:  190:    floatMat *expected_values = calloc_2D_fmat(n_days, n_grid, "Expected continuation value per (t,v_k)");
+        2:  191:    floatMat *immediate_returns = calloc_3D_fmat(n_days, n_scens, n_decisions, "Immediate returns");
+        2:  192:    floatMat *interps_cache = calloc_3D_fmat(n_grid, n_decisions, 2, "tmp");
+       40:  193:    for (int t_i = n_days - 2; t_i >= 0; t_i--)
+        -:  194:    {
+        -:  195:        // Starting from volume level vector v_i [n_grid] at time t_i, compute
+        -:  196:        // the two volume vectors v_dcq0_i+1, v_dcq1_i+1 that result from either
+        -:  197:        // taking DCQ_0 or DCQ_1. Per vector, we can compute a set of interpolation params
+        -:  198:        // Telling us how to interpolate between two sets of continuation value scenarios, in order
+        -:  199:        // To obtain a set of continuation value scenarios per volume level
+        -:  200:
+        -:  201:        // To each set, we add the immediate payoff resulting from DCQ_0 or DCQ1
+        -:  202:        // Per decision, we obtain an immediate payoff-per-scenario
+       38:  203:        strikes_t = &(strike_out->data[t_i * n_scens]);
+       38:  204:        spots_t = &(spots->data[t_i * n_scens]);
+       38:  205:        volumes_t = &(volumes->data[t_i * n_grid]);
+       38:  206:        expected_cont_value_t = &(expected_values->data[t_i * n_grid]);
+       38:  207:        volumes_t_next = &(volumes->data[(t_i + 1) * n_grid]);
+       38:  208:        cont_t = &(continuation_value->data[(t_i)*n_scens * n_grid]);
+       38:  209:        cont_t_next = &(continuation_value->data[(t_i + 1) * n_scens * n_grid]);
+       38:  210:        immediate_returns_t = &(immediate_returns->data[(t_i)*n_scens * n_decisions]);
+        -:  211:        // print_vec(volumes_t, n_grid);
+        -:  212:        // print_vec(volumes_t_next, n_grid);
+        -:  213:
+       38:  214:        compute_immediate_payoff(spots_t, strikes_t, decisions, immediate_returns_t, n_scens, n_decisions);
+        -:  215:        float alpha_interp;
+        -:  216:        int offset_interp;
+        -:  217:        float cont_val_i;
+        -:  218:        float max_value, max_dec;
+       38:  219:        compute_volume_interp_lookup(volumes_t, volumes_t_next, decisions, interps_cache->data, n_grid, n_decisions);
+        -:  220:        // Iterate over state space, i.e. volume grid at time t
+        -:  221:        // int interp_idx;
+     4902:  222:        for (size_t v_i = 0; v_i < n_grid; v_i++)
+        -:  223:        {
+     4864:  224:            v_t = volumes_t[v_i];
+     4864:  225:            test_regression();
+  4868864:  226:            for (size_t scen_i = 0; scen_i < n_scens; scen_i++)
+        -:  227:            {
+        -:  228:                // expected_value[1] = 0.;
+  4864000:  229:                max_value = -1e10;
+ 14592000:  230:                for (size_t dec_i = 0; dec_i < 2; dec_i++)
+        -:  231:                {
+  9728000:  232:                    alpha_interp = interps_cache->data[v_i * n_decisions * 2 + dec_i*2];
+  9728000:  233:                    offset_interp = interps_cache->data[v_i * n_decisions * 2 + dec_i*2 + 1];
+  9728000:  234:                    if (offset_interp > 0 ) {
+  8124000:  235:                        v_t_next = v_t + decisions[dec_i];
+ 16248000:  236:                        cont_val_i = cont_t_next[offset_interp * n_scens + scen_i] +
+  8124000:  237:                                    alpha_interp * (cont_t_next[(offset_interp+1) * n_scens + scen_i] - cont_t_next[offset_interp * n_scens + scen_i]);
+  8124000:  238:                        payoff_t_i = immediate_returns_t[dec_i * n_scens + scen_i];
+        -:  239:                        // printf("%.2f %.2f %.2f\n",v_t_next,cont_val_i, payoff_t_i);
+  8124000:  240:                        if ((cont_val_i + payoff_t_i) > max_value)
+        -:  241:                        {
+  4867184:  242:                            max_value = cont_val_i + payoff_t_i;
+  4867184:  243:                            max_dec = decisions[dec_i];
+        -:  244:                        }
+        -:  245:                    } else {
+        -:  246:                        // Lookup failed, i.e. outside of grid
+        -:  247:                    }
+        -:  248:
+        -:  249:                }
+        -:  250:                // update continuation for current volume and time in-place
+  4864000:  251:                cont_t[v_i * n_scens + scen_i] = max_value;
+  4864000:  252:                expected_cont_value_t[v_i] += max_value;
+        -:  253:            }
+     4864:  254:            expected_cont_value_t[v_i] /= (float)(n_scens);
+        -:  255:        }
+        -:  256:        // print_vec(expected_cont_value_t, n_grid);
+        -:  257:    }
+        -:  258:    // print_2d_mat(expected_values);
+        2:  259:    free_mat(immediate_returns);
+        2:  260:    free_mat(interps_cache);
+        2:  261:    free_mat(expected_values);
+        2:  262:}
+        -:  263:
+        -:  264://
+        2:  265:int main()
+        -:  266:{
+        -:  267:
+        -:  268:    // test_regression();
+        -:  269:    // exit(0);
+        -:  270:    clock_t start, end;
+        -:  271:    double cpu_time_used;
+        2:  272:    start = clock();
+        -:  273:    /////////////////
+        2:  274:    floatMat *continuation_value = calloc_3D_fmat(N_STEPS, N_GRID, N_SCENS, "Continuation value");
+        2:  275:    floatMat *volumes = calloc_2D_fmat(N_STEPS, N_GRID, "Volumes");
+        2:  276:    floatMat *strike_out = calloc_2D_fmat(N_STEPS, N_SCENS, "Strikes");
+        2:  277:    floatMat *spots = calloc_2D_fmat(N_STEPS, N_SCENS, "Spots");
+        -:  278:
+        -:  279:    // print_2d_mat(retMat);
+        2:  280:    init_dummy_data(strike_out, spots);
+        2:  281:    init_volume_grid(volumes);
+        -:  282:    // print_2d_mat(volumes);
+        -:  283:
+        2:  284:    optimize(continuation_value, volumes, strike_out, spots);
+        -:  285:
+        -:  286:    // /////////////////
+        2:  287:    end = clock();
+        2:  288:    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+        2:  289:    printf("It took %.5f ms", 1000 * cpu_time_used);
+        -:  290:
+        2:  291:    free_mat(continuation_value);
+        2:  292:    free_mat(volumes);
+        2:  293:    free_mat(strike_out);
+        2:  294:    free_mat(spots);
+        2:  295:    return 0;
+        -:  296:}
+        -:  297:
+        -:  298:// Initialize continuation value at last day
+        -:  299:////////////////////////////////////////////////////
+        -:  300:// strikes_t = &(strike_out->data[(n_days-1)*n_scens]);
+        -:  301:// spots_t = &(spots->data[(n_days-1)*n_scens]);
+        -:  302:// cont_t = &(continuation_value->data[(n_days-1)*n_scens*n_grid]);
+        -:  303:// for (size_t scen_i = 0; scen_i < n_scens; scen_i++)
+        -:  304:// {
+        -:  305://     // Determine payoff; max(0, spot-strike)
+        -:  306://     if (spots_t[scen_i] > strikes_t[scen_i]) {
+        -:  307://         payoff_t_i = spots_t[scen_i] - strikes_t[scen_i];
+        -:  308://     } else {
+        -:  309://         payoff_t_i = 0.;
+        -:  310://     }
+        -:  311://     // For all volume levels, we'll have the same continuation value
+        -:  312://     for (size_t v_i = 0; v_i < n_grid; v_i++)
+        -:  313://     {
+        -:  314://         cont_t[v_i*n_scens + scen_i] = payoff_t_i;
+        -:  315://     }
+        -:  316:// }
+        -:  317:// print_2d_(cont_t, n_grid, n_scens);

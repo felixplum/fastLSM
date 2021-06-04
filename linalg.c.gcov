@@ -1,0 +1,269 @@
+        -:    0:Source:/home/felix/Desktop/fastLSM/linalg.c
+        -:    0:Graph:linalg.gcno
+        -:    0:Data:linalg.gcda
+        -:    0:Runs:2
+        -:    0:Programs:1
+        -:    1:#include "linalg.h"
+        -:    2:#include<stdio.h>
+        -:    3:
+        -:    4:
+        -:    5:
+       40:    6:float min(float a, float b) {
+       40:    7:    return a < b ? a : b;
+        -:    8:};
+        -:    9:
+       40:   10:float max(float a, float b) {
+       40:   11:    return a >= b ? a : b;
+        -:   12:};
+        -:   13:
+        8:   14:floatMat* calloc_2D_fmat(size_t dimA, size_t dimB, char* name) {
+        8:   15:    floatMat* ret = malloc(sizeof (floatMat));
+        8:   16:    ret->name = name;
+        8:   17:    ret->n_dim = 2;
+        8:   18:    ret->shape = malloc(ret->n_dim*sizeof (size_t));
+        8:   19:    ret->shape[0] = dimA;
+        8:   20:    ret->shape[1] = dimB; 
+        8:   21:    ret->data = (float *)calloc(dimA * dimB, sizeof(float));
+        8:   22:    return ret;
+        -:   23:}
+        -:   24:
+        6:   25:floatMat* calloc_3D_fmat(size_t dimA, size_t dimB, size_t dimC, char* name) {
+        6:   26:    floatMat* ret = malloc(sizeof (floatMat));
+        6:   27:    ret->name = name;
+        6:   28:    ret->n_dim = 3;
+        6:   29:    ret->shape = malloc(ret->n_dim*sizeof (size_t));
+        6:   30:    ret->shape[0] = dimA;
+        6:   31:    ret->shape[1] = dimB;
+        6:   32:    ret->shape[1] = dimC;
+        6:   33:    ret->data = (float *)calloc(dimA * dimB * dimC, sizeof(float));
+        6:   34:    return ret;
+        -:   35:}
+        -:   36:
+    #####:   37:void print_2d_mat(floatMat* mat) {
+    #####:   38:    printf("Matrix: %s \n", mat->name);
+    #####:   39:    size_t n_rows =  mat->shape[0];
+    #####:   40:    size_t n_cols =  mat->shape[1];
+    #####:   41:    print_2d_(mat->data, n_rows, n_cols);
+    #####:   42:}
+        -:   43:
+    #####:   44:void mean(floatMat* mat) {
+        -:   45:    
+    #####:   46:}
+        -:   47:
+     4864:   48:void regress(float* risk_factors, float* target, float *params_out,
+        -:   49:             size_t n_samples, size_t n_rf, size_t order, bool map_data) {
+        -:   50:    // risk_factos is [n_sim x n_rf] matrix, where risk factors are not exponentiated
+        -:   51:    // Computes the optimal parameters via stoch. gradient descent
+        -:   52:    
+     4864:   53:    size_t n_params = n_rf*(order+1);
+        -:   54:    float* rf_i;
+        -:   55:    float target_i, rf_i_j;
+     4864:   56:    float* gradient_i = (float*)calloc(n_params, sizeof(float));
+     4864:   57:    float* gradient_i_j = (float*)calloc(n_params, sizeof(float));
+     4864:   58:    float* regressors_i = (float*)calloc(n_params, sizeof(float));
+        -:   59:    float* regressors_i_j, *params_j;
+        -:   60:    float target_predict;
+        -:   61:    float pred_error_i;
+     4864:   62:    size_t batch_size = 1;
+     4864:   63:    float grad_sum_sq = 0.;
+     4864:   64:    float learning_rate = 0.5;
+        -:   65:    // float lr_decay = 0.99;
+     4864:   66:    float lr_decay = pow(0.01, 1./((float)n_samples));
+        -:   67:    
+        -:   68:    // Numerical conditioning
+     4864:   69:    float target_scale = 1. / max_vec(target, n_samples);
+     4864:   70:    float rf_scale =  1. / max_vec(risk_factors, n_samples);
+        -:   71:
+        -:   72:    // Iterate over all samples
+  4868864:   73:    for (size_t i = 0; i < n_samples; i++)
+        -:   74:    {
+        -:   75:        // Compute gradient for current sample
+  4864000:   76:        target_i = target[i] * target_scale;
+  4864000:   77:        rf_i = &(risk_factors[i*n_rf]); // points to rows containing rf at sample i
+  4864000:   78:        target_predict = 0;
+        -:   79:        // For each risk factor, build polynomial of order "order"
+  9728000:   80:        for (size_t j = 0; j < n_rf; j++)
+        -:   81:        {
+        -:   82:            // target_i = p0_0 + p1_0*rf_i_0 + p2*rf_i_0² ... p0_1 + p1_1*rf_i_1 + p2*rf_i_1² +  =: f(p)
+        -:   83:            // Cost J(p) = (target_i-f(p))²
+        -:   84:            // dJ(p)/dp = -2*(target_i-f(p))*(df(p)/dp)
+        -:   85:            // With df(p)/dp =  [1, rf_i_0, rf_i_0², 1, rf_i_1, rf_i_1², ...]
+        -:   86:
+        -:   87:            // Pointers to current rf's polynomial for convencience
+  4864000:   88:            rf_i_j = rf_i[j]*rf_scale;
+  4864000:   89:            regressors_i_j = &(regressors_i[j*(order+1)]);
+  4864000:   90:            params_j = &(params_out[j*(order+1)]);
+        -:   91:            // gradient_i_j = &(gradient_i[j*(order+1)]); 
+        -:   92:
+        -:   93:            // Build regressor (= gradient) + eval function
+  4864000:   94:            regressors_i_j[0] = 1.; // const. term, i.e. p0_i
+  4864000:   95:            target_predict += params_j[0];
+ 14592000:   96:            for (size_t order_k = 1; order_k < order+1; order_k++)
+        -:   97:            {
+  9728000:   98:                regressors_i_j[order_k] = regressors_i_j[order_k-1]*rf_i_j;
+  9728000:   99:                target_predict += params_j[order_k]*regressors_i_j[order_k];
+        -:  100:            }
+        -:  101:        }
+        -:  102:        // printf("Target pred: %2.f; target: %.2f, cost: %.2f\n", target_predict, target_i, (target_predict-target_i)*(target_predict-target_i));
+        -:  103:        // printf("Regressors: "); print_vec(regressors_i_j, 3);
+        -:  104:        // printf("Params: "); print_vec(params_j, 3);
+        -:  105:
+        -:  106:        // Now compute final gradient, i.e. -2*(target_i-f(p))*(df(p)/dp)
+  4864000:  107:        pred_error_i = 2*(target_predict-target_i);
+  4864000:  108:        grad_sum_sq = 0.;
+        -:  109:        // Compute magnitude of current gradient
+ 19456000:  110:        for (size_t param_idx = 0; param_idx < n_params; param_idx++)
+        -:  111:        {
+ 14592000:  112:            gradient_i_j[param_idx] = regressors_i[param_idx]*pred_error_i;
+        -:  113:            //grad_sum_sq += gradient_i_j[param_idx]*gradient_i_j[param_idx];
+        -:  114:        }
+        -:  115:        // Second pass: Update global gradient with normalized gradient
+        -:  116:        // grad_sum_sq = sqrt(grad_sum_sq);
+ 19456000:  117:        for (size_t param_idx = 0; param_idx < n_params; param_idx++)
+        -:  118:        {
+ 14592000:  119:            gradient_i[param_idx] +=  (gradient_i_j[param_idx]+1e-8);
+        -:  120:        }
+        -:  121:        // printf("Grad tmp: "); print_vec(gradient_i_j, 3);
+        -:  122:        // Do parameter step with accumulated gradient
+  4864000:  123:        if ((i % batch_size) == 0) {
+  4864000:  124:            learning_rate *= lr_decay;
+        -:  125:            //norm_vec(gradient_i, n_params);
+        -:  126:            // printf("Batch grad: "); print_vec(gradient_i, 3);
+        -:  127:            // printf("Params_j before update: "); print_vec(params_j, 3);
+ 19456000:  128:            for (size_t param_idx = 0; param_idx < n_params; param_idx++)
+        -:  129:                {
+ 14592000:  130:                    params_out[param_idx] -=  learning_rate*gradient_i[param_idx];
+ 14592000:  131:                    gradient_i[param_idx] = 0.; // reset
+        -:  132:                }
+        -:  133:            // printf("Params_j after update: "); print_vec(params_j, 3);
+        -:  134:            // printf("LR %.3f\n", learning_rate);
+  4864000:  135:            float a = 1;
+        -:  136:            // printf("Grad: "); print_vec(gradient_i, 3);
+        -:  137:        }
+        -:  138:        // printf("\n_________________\n");
+        -:  139:    }
+        -:  140:    // Do final iteration; access average error
+        -:  141:    
+        -:  142:    // Rescale parameters
+     4864:  143:    scale_vec(params_out, n_params, 1./target_scale);
+        -:  144:    
+        -:  145:    // Plot
+        -:  146:    if (false) {
+        -:  147:        float error = 0.;
+        -:  148:        float diff;
+        -:  149:        int k = 0;
+        -:  150:        float pred_i;
+        -:  151:        float x_;
+        -:  152:
+        -:  153:        FILE * temp = fopen("data.temp", "w");
+        -:  154:
+        -:  155:        for(int i=0; i < n_samples; i++) {
+        -:  156:            x_ = risk_factors[i] *  rf_scale;
+        -:  157:            pred_i = params_out[0] + params_out[1]*x_
+        -:  158:                    + params_out[2]*x_*x_;
+        -:  159:            diff = pred_i - target[i];
+        -:  160:            error += diff*diff;
+        -:  161:            fprintf(temp, "%lf %lf %lf\n", x_, target[i], pred_i);
+        -:  162:        }
+        -:  163:        fclose(temp);  
+        -:  164:
+        -:  165:        FILE *gnuplot = popen("gnuplot -persistent", "w");
+        -:  166:        // fprintf(gnuplot, "set style line 3 lt 1 lw 3 pt 3 lc rgb 'blue'\n");
+        -:  167:        // fprintf(gnuplot, "set style line 2 lc rgb 'blue'\n");
+        -:  168:        fprintf(gnuplot, "plot 'data.temp' using 1:3 lc rgb 'black'\n");
+        -:  169:        fprintf(gnuplot, "replot 'data.temp' using 1:2 lc rgb 'red'\n");
+        -:  170:        fflush(gnuplot);
+        -:  171:
+        -:  172:
+        -:  173:        error = sqrt(error/n_samples);
+        -:  174:        printf("MSE: %.3f\n", error);    
+        -:  175:    }
+        -:  176:
+        -:  177:    // Apply regression coeff. to original data
+     4864:  178:    if (map_data) {
+    #####:  179:        assert(n_rf==1);
+        -:  180:        float x_;
+    #####:  181:        for(int i=0; i < n_samples; i++) {
+        -:  182:            // TODO: Do in generic way
+    #####:  183:            x_ = rf_scale*risk_factors[i];
+    #####:  184:            target[i] = params_out[0];
+    #####:  185:            for (size_t k = 1; k < n_params; k++)
+        -:  186:            {
+    #####:  187:                target[i] += params_out[k]*pow(x_, k);
+        -:  188:            }
+        -:  189:        }
+        -:  190:    }
+        -:  191:
+        -:  192:    // cleanup
+     4864:  193:    free(gradient_i);
+     4864:  194:    free(gradient_i_j);
+     4864:  195:    free(regressors_i_j);
+        -:  196:
+     4864:  197:}
+        -:  198:
+    #####:  199:void print_2d_(float* arr, size_t n_rows, size_t n_cols) {
+        -:  200:    float* row_ptr;
+    #####:  201:    for (size_t i = 0; i < n_rows; i++)
+        -:  202:    {
+    #####:  203:        row_ptr = &(arr[i*n_cols]);
+    #####:  204:        for (size_t j = 0; j <  n_cols; j++)
+        -:  205:        {
+    #####:  206:            printf("%2.f, ",row_ptr[j]);
+        -:  207:        }
+    #####:  208:        printf("\n");
+        -:  209:    }
+    #####:  210:}
+        -:  211:
+     9728:  212:float max_vec(float* vec, size_t length) {
+     9728:  213:    float max = -1e20;
+  9737728:  214:    for (size_t i = 0; i < length; i++)
+        -:  215:    {
+  9728000:  216:        if (vec[i] > max) max = vec[i];
+        -:  217:    }
+     9728:  218:    return max;
+        -:  219:}
+    #####:  220:float min_vec(float* vec, size_t length) {
+    #####:  221:    float min = 1e20;
+    #####:  222:    for (size_t i = 0; i < length; i++)
+        -:  223:    {
+    #####:  224:        if (vec[i] < min) min = vec[i];
+        -:  225:    }
+    #####:  226:    return min;
+        -:  227:}
+        -:  228:
+    #####:  229:void print_vec(float* vec, size_t length) {
+    #####:  230:    for (size_t i = 0; i < length; i++)
+        -:  231:    {
+    #####:  232:        printf("%.3f, ",vec[i]);
+        -:  233:    }
+    #####:  234:    printf("\n");
+    #####:  235:}
+        -:  236:
+    #####:  237:void norm_vec(float* vec, size_t length) {
+    #####:  238:    float sum_sq = 0.;
+    #####:  239:    for (size_t i = 0; i < length; i++)
+        -:  240:    {
+        -:  241:        /* code */
+    #####:  242:        sum_sq += vec[i]*vec[i];
+        -:  243:    }
+    #####:  244:    sum_sq = sqrt(sum_sq);
+    #####:  245:    for (size_t i = 0; i < length; i++)
+        -:  246:    {
+        -:  247:        /* code */
+    #####:  248:        vec[i] = (vec[i]+1e-10)/(sum_sq+1e-10);
+        -:  249:    }    
+    #####:  250:}
+        -:  251:
+     4864:  252:void scale_vec(float* vec, size_t length, float scale) {
+    19456:  253:    for (size_t i = 0; i < length; i++)
+        -:  254:    {
+    14592:  255:        vec[i] *= scale;
+        -:  256:    }
+     4864:  257:}
+       14:  258:void free_mat(floatMat* mat) {
+       14:  259:   free(mat->data);
+       14:  260:   free(mat->shape);
+       14:  261:   free(mat); 
+       14:  262:}
+        -:  263:
+        -:  264:
