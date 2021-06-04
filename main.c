@@ -4,13 +4,13 @@
 #include <math.h> 
 #include <stdlib.h>
 #include <assert.h>
+#include <stdbool.h>
 
-const int N_SCENS = 8;
-const int N_GRID = 16;
+const int N_SCENS = 10000;
+const int N_GRID = 32;
 const int N_STEPS = 365;
 
 #define NELEMS(x)  (sizeof(x) / sizeof((x)[0]))
-
 
 
 // float continuation_value[num_days][N_GRID][N_SCENS];
@@ -66,18 +66,18 @@ void init_dummy_data(floatMat* strike_out, floatMat* spots) {
 // }
 
 void test_regression() {
-    const size_t n_s = 10000;
+    const size_t n_s = 1000;
     float rf[n_s];
     float target[n_s];
-    srand(4711);
+    // srand(4711);
     float x_sample, noise;
-    for (size_t i = 0; i < n_s; i++)
-    {
-        x_sample = (rand() % 100);
-        rf[i] = x_sample;
-        noise = (rand() % 100) / 100.;;
-        target[i] = 3 + 4.5*x_sample+7*x_sample*x_sample + 0*noise;
-    }
+    // for (size_t i = 0; i < n_s; i++)
+    // {
+    //     x_sample = (rand() % 30);
+    //     rf[i] = x_sample;
+    //     noise = (rand() % 100) / 100.;;
+    //     target[i] =  4.5*x_sample-70*x_sample*x_sample + 100.*noise;
+    // }
     
     float params[3] = {0,0,0};
     clock_t start, end;
@@ -85,16 +85,17 @@ void test_regression() {
     start = clock();
     for (size_t i = 0; i < 1; i++)
     {
-        regress(rf, target, &params, n_s, 1, 2); 
+        regress(rf, target, &params, n_s, 1, 2, false); 
     }
-    
-    end = clock();
-    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-    printf("It took %.5f ms\n", 1000*cpu_time_used);
-    for (size_t i = 0; i < 3; i++)
-    {
-        printf("Param %i: %.2f \n", i, params[i]);
-    }
+
+        
+    // end = clock();
+    // cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    // printf("It took %.5f ms\n", 1000*cpu_time_used);
+    // for (size_t i = 0; i < 3; i++)
+    // {
+    //     printf("Param %i: %.2f \n", i, params[i]);
+    // }
     
 }
 
@@ -121,29 +122,35 @@ void norm_vec(float* vec, size_t length) {
     }    
 }
 
-void regress(float* risk_factors, float* target, float *params_out, size_t n_samples, size_t n_rf, size_t order) {
+void regress(float* risk_factors, float* target, float *params_out,
+             size_t n_samples, size_t n_rf, size_t order, bool map_data) {
     // risk_factos is [n_sim x n_rf] matrix, where risk factors are not exponentiated
     // Computes the optimal parameters via stoch. gradient descent
     
+    size_t n_params = n_rf*(order+1);
     float* rf_i;
     float target_i, rf_i_j;
-    float* gradient_i = (float*)calloc(n_rf*(order+1), sizeof(float));
-    float* gradient_i_j = (float*)calloc(n_rf*(order+1), sizeof(float));
-    float* regressors_i = (float*)calloc(n_rf*(order+1), sizeof(float));
+    float* gradient_i = (float*)calloc(n_params, sizeof(float));
+    float* gradient_i_j = (float*)calloc(n_params, sizeof(float));
+    float* regressors_i = (float*)calloc(n_params, sizeof(float));
     float* regressors_i_j, *params_j;
     float target_predict;
     float pred_error_i;
     size_t batch_size = 1;
     float grad_sum_sq = 0.;
-    float learning_rate = 1.;
-    // float lr_decay = 0.999;
+    float learning_rate = 0.5;
+    // float lr_decay = 0.99;
     float lr_decay = pow(0.01, 1./((float)n_samples));
     
+    // Numerical conditioning
+    float target_scale = 1. / max_vec(target, n_samples);
+    float rf_scale =  1. / max_vec(risk_factors, n_samples);
+
     // Iterate over all samples
     for (size_t i = 0; i < n_samples; i++)
     {
         // Compute gradient for current sample
-        target_i = target[i];
+        target_i = target[i] * target_scale;
         rf_i = &(risk_factors[i*n_rf]); // points to rows containing rf at sample i
         target_predict = 0;
         // For each risk factor, build polynomial of order "order"
@@ -155,7 +162,7 @@ void regress(float* risk_factors, float* target, float *params_out, size_t n_sam
             // With df(p)/dp =  [1, rf_i_0, rf_i_0², 1, rf_i_1, rf_i_1², ...]
 
             // Pointers to current rf's polynomial for convencience
-            rf_i_j = rf_i[j];
+            rf_i_j = rf_i[j]*rf_scale;
             regressors_i_j = &(regressors_i[j*(order+1)]);
             params_j = &(params_out[j*(order+1)]);
             // gradient_i_j = &(gradient_i[j*(order+1)]); 
@@ -177,25 +184,25 @@ void regress(float* risk_factors, float* target, float *params_out, size_t n_sam
         pred_error_i = 2*(target_predict-target_i);
         grad_sum_sq = 0.;
         // Compute magnitude of current gradient
-        for (size_t param_idx = 0; param_idx < n_rf*(order+1); param_idx++)
+        for (size_t param_idx = 0; param_idx < n_params; param_idx++)
         {
             gradient_i_j[param_idx] = regressors_i[param_idx]*pred_error_i;
-            grad_sum_sq += gradient_i_j[param_idx]*gradient_i_j[param_idx];
+            //grad_sum_sq += gradient_i_j[param_idx]*gradient_i_j[param_idx];
         }
         // Second pass: Update global gradient with normalized gradient
-        grad_sum_sq = sqrt(grad_sum_sq);
-        for (size_t param_idx = 0; param_idx < n_rf*(order+1); param_idx++)
+        // grad_sum_sq = sqrt(grad_sum_sq);
+        for (size_t param_idx = 0; param_idx < n_params; param_idx++)
         {
-            gradient_i[param_idx] +=  (gradient_i_j[param_idx]+1e-8) / (grad_sum_sq+1e-8);
+            gradient_i[param_idx] +=  (gradient_i_j[param_idx]+1e-8);
         }
         // printf("Grad tmp: "); print_vec(gradient_i_j, 3);
         // Do parameter step with accumulated gradient
         if ((i % batch_size) == 0) {
             learning_rate *= lr_decay;
-            norm_vec(gradient_i, n_rf*(order+1));
+            //norm_vec(gradient_i, n_params);
             // printf("Batch grad: "); print_vec(gradient_i, 3);
             // printf("Params_j before update: "); print_vec(params_j, 3);
-            for (size_t param_idx = 0; param_idx < n_rf*(order+1); param_idx++)
+            for (size_t param_idx = 0; param_idx < n_params; param_idx++)
                 {
                     params_out[param_idx] -=  learning_rate*gradient_i[param_idx];
                     gradient_i[param_idx] = 0.; // reset
@@ -204,30 +211,69 @@ void regress(float* risk_factors, float* target, float *params_out, size_t n_sam
             // printf("LR %.3f\n", learning_rate);
             float a = 1;
             // printf("Grad: "); print_vec(gradient_i, 3);
-            
         }
         // printf("\n_________________\n");
     }
-
     // Do final iteration; access average error
-    float error = 0.;
-    float diff;
-    int k = 0;
-    for (size_t i = 0; i < n_samples; i++)
-    {
-        diff = params_out[0] + params_out[1]*risk_factors[i]
-                + params_out[2]*risk_factors[i]*risk_factors[i] - target[i];
-        error += diff*diff;
-    }
-    error = sqrt(error/n_samples);
-    printf("MSE: %.3f", error);    
     
+    // Rescale parameters
+    scale_vec(params_out, n_params, 1./target_scale);
+    
+    // Plot
+    if (false) {
+        float error = 0.;
+        float diff;
+        int k = 0;
+        float pred_i;
+        float x_;
+
+        FILE * temp = fopen("data.temp", "w");
+
+        for(int i=0; i < n_samples; i++) {
+            x_ = risk_factors[i] *  rf_scale;
+            pred_i = params_out[0] + params_out[1]*x_
+                    + params_out[2]*x_*x_;
+            diff = pred_i - target[i];
+            error += diff*diff;
+            fprintf(temp, "%lf %lf %lf\n", x_, target[i], pred_i);
+        }
+        fclose(temp);  
+
+        FILE *gnuplot = popen("gnuplot -persistent", "w");
+        // fprintf(gnuplot, "set style line 3 lt 1 lw 3 pt 3 lc rgb 'blue'\n");
+        // fprintf(gnuplot, "set style line 2 lc rgb 'blue'\n");
+        fprintf(gnuplot, "plot 'data.temp' using 1:3 lc rgb 'black'\n");
+        fprintf(gnuplot, "replot 'data.temp' using 1:2 lc rgb 'red'\n");
+        fflush(gnuplot);
+
+
+        error = sqrt(error/n_samples);
+        printf("MSE: %.3f\n", error);    
+    }
+
+    // Apply regression coeff. to original data
+    if (map_data) {
+        assert(n_rf==1);
+        float x_;
+        for(int i=0; i < n_samples; i++) {
+            // TODO: Do in generic way
+            x_ = rf_scale*risk_factors[i];
+            target[i] = params_out[0];
+            for (size_t k = 1; k < n_params; k++)
+            {
+                target[i] += params_out[k]*pow(x_, k);
+            }
+        }
+    }
+
     // cleanup
     free(gradient_i);
     free(gradient_i_j);
     free(regressors_i_j);
 
 }
+
+
 
 int interp(float* lookup_grid, size_t n_entries, float lookup_val, float* alpha_out, int* shift_out) {
     if (lookup_val > lookup_grid[n_entries-1] || lookup_val < lookup_grid[0] ) {
@@ -246,7 +292,8 @@ int interp(float* lookup_grid, size_t n_entries, float lookup_val, float* alpha_
     }
     *alpha_out = (lookup_val - lookup_grid[i]) / (lookup_grid[i+1] - lookup_grid[i]);
     *shift_out = i;
-    return 0;//target_grid[i] + alpha * (target_grid[i+1]  - target_grid[i] );
+    return 0;
+    //target_grid[i] + alpha * (target_grid[i+1]  - target_grid[i] );
 }
 
 void compute_immediate_returns(float* spots_t, float* strikes_t, const float* decisions_t, float* result,
@@ -263,6 +310,8 @@ void compute_immediate_returns(float* spots_t, float* strikes_t, const float* de
 }
 
 void compute_volume_interp_lookup(float* volumes_t, float* volumes_t_next, float* decisions, float* result, size_t n_grid, size_t n_dec) {
+    // Computes scale and offset for all [volume state X decision] from grid(t) -> grid(t+1)
+    // These coefficients can then be used to interpolate between the respective continuation values
     float v_lookup;
     float alpha_interp;
     int offset_interp;
@@ -274,9 +323,7 @@ void compute_volume_interp_lookup(float* volumes_t, float* volumes_t_next, float
             result[dec_i] = interp(volumes_t_next, n_grid, v_lookup, &alpha_interp, &offset_interp);            // TODO
             // TODO
         }
-        
     }
-    
 }
 
 void optimize(floatMat* continuation_value, floatMat* volumes,
@@ -330,7 +377,7 @@ void optimize(floatMat* continuation_value, floatMat* volumes,
         for (size_t v_i = 0; v_i < n_grid; v_i++) {
             v_t = volumes_t[v_i];
 
-
+            test_regression();
             for (size_t scen_i = 0;  scen_i < n_scens; scen_i++) {
                 // expected_value[0] = 0.;
                 // expected_value[1] = 0.;
@@ -342,7 +389,7 @@ void optimize(floatMat* continuation_value, floatMat* volumes,
                         cont_val_tmp = cont_t_next[v_i*n_scens + scen_i + offset_interp] + 
                         alpha_interp*(cont_t_next[v_i*n_scens + scen_i + offset_interp+1]-cont_t_next[v_i*n_scens + scen_i + offset_interp]);
                         payoff_t_i = immediate_returns_t[dec_i*n_scens+dec_i];
-                        cont_t_tmp[dec_i]->data[v_i*n_scens + scen_i] = cont_val_tmp + payoff_t_i;
+                        //cont_t_tmp[dec_i]->data[v_i*n_scens + scen_i] = cont_val_tmp + payoff_t_i;                                                TODO
                         if ((cont_val_tmp + payoff_t_i) >  max_value) {
                             max_value = cont_val_tmp + payoff_t_i;
                             max_dec = decisions[dec_i];
@@ -369,8 +416,8 @@ void optimize(floatMat* continuation_value, floatMat* volumes,
 // 
 int main() {
 
-    test_regression();
-    exit(0);
+    // test_regression();
+    // exit(0);
     clock_t start, end;
     double cpu_time_used;
     start = clock();
@@ -393,8 +440,8 @@ int main() {
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     printf("It took %.5f ms", 1000*cpu_time_used);
 
-    // free_mat(continuation_value);
-    // free_mat(volumes);
+    free_mat(continuation_value);
+    free_mat(volumes);
     // free_mat(strike_out);
     // free_mat(spots);
     return 0;

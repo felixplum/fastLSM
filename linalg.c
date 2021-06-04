@@ -58,6 +58,29 @@ void print_2d_(float* arr, size_t n_rows, size_t n_cols) {
     }
 }
 
+float max_vec(float* vec, size_t length) {
+    float max = -1e20;
+    for (size_t i = 0; i < length; i++)
+    {
+        if (vec[i] > max) max = vec[i];
+    }
+    return max;
+}
+float min_vec(float* vec, size_t length) {
+    float min = 1e20;
+    for (size_t i = 0; i < length; i++)
+    {
+        if (vec[i] < min) min = vec[i];
+    }
+    return min;
+}
+
+void scale_vec(float* vec, size_t length, float scale) {
+    for (size_t i = 0; i < length; i++)
+    {
+        vec[i] *= scale;
+    }
+}
 void free_mat(floatMat* mat) {
    free(mat->data);
    free(mat->shape);

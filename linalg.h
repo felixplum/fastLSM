@@ -14,6 +14,10 @@ typedef struct floatMat {
 void free_mat(floatMat* mat);
 float min(float a, float b);
 float max(float a, float b);
+float max_vec(float* vec, size_t length);
+float min_vec(float* vec, size_t length);
+void scale_vec(float* vec, size_t length, float scale);
+
 void print_2d_mat(floatMat* mat);
 void print_2d_(float* arr, size_t n_rows, size_t n_cols);
 floatMat* calloc_2D_fmat(size_t dimA, size_t dimB, char* name);
