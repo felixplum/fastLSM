@@ -5,7 +5,7 @@
             "label": "C/C++: gcc-7 build active file",
             "command": "/usr/bin/gcc-7",
             "args": [
-                "-g",
+                "-O3",
                 "${fileDirname}/*.c",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}",

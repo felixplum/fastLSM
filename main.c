@@ -66,19 +66,28 @@ void init_dummy_data(floatMat* strike_out, floatMat* spots) {
 // }
 
 void test_regression() {
-    float rf[100000];
-    float target[100000];
-    for (size_t i = 0; i < 100000; i++)
+    const size_t n_s = 10000;
+    float rf[n_s];
+    float target[n_s];
+    srand(4711);
+    float x_sample, noise;
+    for (size_t i = 0; i < n_s; i++)
     {
-        rf[i] = i;
-        target[i] = i*i;
+        x_sample = (rand() % 100);
+        rf[i] = x_sample;
+        noise = (rand() % 100) / 100.;;
+        target[i] = 3 + 4.5*x_sample+7*x_sample*x_sample + 0*noise;
     }
     
-    float params[3] = {0,1.,0};
+    float params[3] = {0,0,0};
     clock_t start, end;
     double cpu_time_used;
     start = clock();
-    regress(rf, target, &params, 100000, 1, 2); 
+    for (size_t i = 0; i < 1; i++)
+    {
+        regress(rf, target, &params, n_s, 1, 2); 
+    }
+    
     end = clock();
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     printf("It took %.5f ms\n", 1000*cpu_time_used);
@@ -97,6 +106,21 @@ void print_vec(float* vec, size_t length) {
     printf("\n");
 }
 
+void norm_vec(float* vec, size_t length) {
+    float sum_sq = 0.;
+    for (size_t i = 0; i < length; i++)
+    {
+        /* code */
+        sum_sq += vec[i]*vec[i];
+    }
+    sum_sq = sqrt(sum_sq);
+    for (size_t i = 0; i < length; i++)
+    {
+        /* code */
+        vec[i] = (vec[i]+1e-10)/(sum_sq+1e-10);
+    }    
+}
+
 void regress(float* risk_factors, float* target, float *params_out, size_t n_samples, size_t n_rf, size_t order) {
     // risk_factos is [n_sim x n_rf] matrix, where risk factors are not exponentiated
     // Computes the optimal parameters via stoch. gradient descent
@@ -112,6 +136,8 @@ void regress(float* risk_factors, float* target, float *params_out, size_t n_sam
     size_t batch_size = 1;
     float grad_sum_sq = 0.;
     float learning_rate = 1.;
+    // float lr_decay = 0.999;
+    float lr_decay = pow(0.01, 1./((float)n_samples));
     
     // Iterate over all samples
     for (size_t i = 0; i < n_samples; i++)
@@ -143,8 +169,8 @@ void regress(float* risk_factors, float* target, float *params_out, size_t n_sam
                 target_predict += params_j[order_k]*regressors_i_j[order_k];
             }
         }
-        // printf("Target pred: %2.f; target: %.2f, cost: %.2f", target_predict, target_i, (target_predict-target_i)*(target_predict-target_i));
-        // printf("Regresors: "); print_vec(regressors_i_j, 3);
+        // printf("Target pred: %2.f; target: %.2f, cost: %.2f\n", target_predict, target_i, (target_predict-target_i)*(target_predict-target_i));
+        // printf("Regressors: "); print_vec(regressors_i_j, 3);
         // printf("Params: "); print_vec(params_j, 3);
 
         // Now compute final gradient, i.e. -2*(target_i-f(p))*(df(p)/dp)
@@ -160,22 +186,41 @@ void regress(float* risk_factors, float* target, float *params_out, size_t n_sam
         grad_sum_sq = sqrt(grad_sum_sq);
         for (size_t param_idx = 0; param_idx < n_rf*(order+1); param_idx++)
         {
-            gradient_i[param_idx] +=  gradient_i_j[param_idx] / (grad_sum_sq+1e-8);
+            gradient_i[param_idx] +=  (gradient_i_j[param_idx]+1e-8) / (grad_sum_sq+1e-8);
         }
-        // printf("Grad: "); print_vec(gradient_i, 3);
+        // printf("Grad tmp: "); print_vec(gradient_i_j, 3);
         // Do parameter step with accumulated gradient
         if ((i % batch_size) == 0) {
-            learning_rate = exp(-(float)i*0.01);
+            learning_rate *= lr_decay;
+            norm_vec(gradient_i, n_rf*(order+1));
+            // printf("Batch grad: "); print_vec(gradient_i, 3);
+            // printf("Params_j before update: "); print_vec(params_j, 3);
             for (size_t param_idx = 0; param_idx < n_rf*(order+1); param_idx++)
                 {
-                    params_out[param_idx] -=  learning_rate*gradient_i[param_idx]/((float)batch_size);
+                    params_out[param_idx] -=  learning_rate*gradient_i[param_idx];
                     gradient_i[param_idx] = 0.; // reset
                 }
             // printf("Params_j after update: "); print_vec(params_j, 3);
+            // printf("LR %.3f\n", learning_rate);
+            float a = 1;
             // printf("Grad: "); print_vec(gradient_i, 3);
             
         }
+        // printf("\n_________________\n");
     }
+
+    // Do final iteration; access average error
+    float error = 0.;
+    float diff;
+    int k = 0;
+    for (size_t i = 0; i < n_samples; i++)
+    {
+        diff = params_out[0] + params_out[1]*risk_factors[i]
+                + params_out[2]*risk_factors[i]*risk_factors[i] - target[i];
+        error += diff*diff;
+    }
+    error = sqrt(error/n_samples);
+    printf("MSE: %.3f", error);    
     
     // cleanup
     free(gradient_i);
