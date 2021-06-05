@@ -1,6 +1,7 @@
 {
     "files.associations": {
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "graph.h": "c"
     },
     "python.pythonPath": "/usr/bin/python3"
 }

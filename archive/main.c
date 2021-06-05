@@ -106,12 +106,12 @@ void test_regression()
 //     clock_t start, end;
 //     double cpu_time_used;
 //     start = clock();
-//     size_t n = 50;
+//     size_t n =  100;
 //     float** res_ptr = malloc(n*sizeof(float*));
 //     for (size_t i = 0; i < n; i++)
 //     {
-//         res_ptr[i] = calloc(2*2*512*10000,sizeof(float));
-//         for (size_t k = 0; k < 2*2*512*10000; k++)
+//         res_ptr[i] = calloc(2*512*10000,sizeof(float));
+//         for (size_t k = 0; k < 2*512*10000; k++)
 //         {
 //             res_ptr[i][k] = k; 
 //         }
@@ -296,8 +296,6 @@ int main()
 {
 
     // test_regression();
-    test_malloc();
-    exit(0);
     clock_t start, end;
     double cpu_time_used;
     start = clock();

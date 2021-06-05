@@ -52,5 +52,7 @@ Mkfile.old
 dkms.conf
 
 main
+main_graph
+gmon.out
 perf.data
 data.temp
