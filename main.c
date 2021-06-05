@@ -102,6 +102,36 @@ void test_regression()
     // }
 }
 
+// void test_malloc() {
+//     clock_t start, end;
+//     double cpu_time_used;
+//     start = clock();
+//     size_t n = 50;
+//     float** res_ptr = malloc(n*sizeof(float*));
+//     for (size_t i = 0; i < n; i++)
+//     {
+//         res_ptr[i] = calloc(2*2*512*10000,sizeof(float));
+//         for (size_t k = 0; k < 2*2*512*10000; k++)
+//         {
+//             res_ptr[i][k] = k; 
+//         }
+        
+//     }
+//     end = clock();
+//     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+//     printf("It took %.5f ms to allocate\n", 1000*cpu_time_used);
+//     start = clock();
+//     for (size_t i = 0; i < n; i++)
+//     {
+//         free(res_ptr[i]);
+//     }
+//     end = clock();
+//     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+//     printf("It took %.5f ms to free\n", 1000*cpu_time_used);
+    
+//     free(res_ptr);
+// }
+
 int interp(float *lookup_grid, size_t n_entries, float lookup_val, float *alpha_out, float *shift_out)
 {
     if (lookup_val > lookup_grid[n_entries - 1] || lookup_val < lookup_grid[0])
@@ -266,7 +296,8 @@ int main()
 {
 
     // test_regression();
-    // exit(0);
+    test_malloc();
+    exit(0);
     clock_t start, end;
     double cpu_time_used;
     start = clock();
