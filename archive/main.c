@@ -6,7 +6,7 @@
 #include <assert.h>
 
 const int N_SCENS = 10000;
-const int N_GRID = 16;
+const int N_GRID = 182;
 const int N_STEPS = 365;
 
 #define NELEMS(x) (sizeof(x) / sizeof((x)[0]))
@@ -51,17 +51,19 @@ void init_dummy_data(floatMat *strike_out, floatMat *spots)
 {
     size_t n_rows = spots->shape[0];
     size_t n_cols = spots->shape[1];
-    //assert(n_cols == 1);
-    for (size_t i = 0; i < n_rows; i++)
-    {
-        spots->data[i * n_cols + 0] = 20. + 1. * cos((float)i / 365 * 2 * M_PI);
-        strike_out->data[i * n_cols + 0] = 20.;
+
+    for (size_t day_i = 0; day_i < n_rows; day_i++){
+        for (size_t i = 0; i < n_cols; i++)
+        {
+            spots->data[day_i*n_cols +i] = 1;//20. + 1. * cos((float)day_i / 365 * 2 * M_PI);
+            if (day_i > 182)
+                strike_out->data[day_i*n_cols+i] = 0;//20.;
+            else strike_out->data[day_i*n_cols+i] = 1;
+        }
     }
 
-    // print_vec(spots->data, 365);
-    // print_vec(strike_out->data, 365);
-
 }
+
 
 // void compute_volume_interp_params(float* v0_in, float* v1_in, int* idx_offset_out, float* alpha_out) {
 //     // such that v0[i+offset] = alpha * v1[i + offset] + (1-alpha)*v1(i + offset+1)
@@ -252,7 +254,7 @@ void optimize(floatMat *continuation_value, floatMat *volumes,
         for (size_t v_i = 0; v_i < n_grid; v_i++)
         {
             v_t = volumes_t[v_i];
-            test_regression();
+            // test_regression();
             for (size_t scen_i = 0; scen_i < n_scens; scen_i++)
             {
                 // expected_value[1] = 0.;

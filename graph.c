@@ -2,10 +2,14 @@
 
 #define NUM_ACTIONS_MAX 10
 
-void init_state_containers(size_t num, stateContainer* containers) {
+void init_state_containers(size_t num, stateContainer* containers,
+      float* payments, float* costs, size_t n_scens) {
     for (size_t i = 0; i < num; i++)
     {
         containers[i].n_states = 0;
+        containers[i].n_scens = n_scens;
+        containers[i].payments = payments + i*n_scens;
+        containers[i].costs = &(costs[i*n_scens]);
         containers[i].state_lb = NULL;
         containers[i].state_ub = NULL;
         if (i < num-1) containers[i].next = &(containers[i+1]);
@@ -23,13 +27,16 @@ void add_state_to_container(stateContainer* container, State* state, State* star
         container->state_lb = state;
         container->state_ub = state;
         container->n_states += 1;
+        state->parent = container;
         return;
     }
+    size_t num_iter = 0;
     State* iter = container->state_ub;
     State* iter_prev;
     if(start_state_lookup) iter = start_state_lookup;
     // As long as there's a state:
     while(iter) {
+        num_iter+=1;
         if (state->value == iter->value) {
             return;
         }
@@ -46,22 +53,28 @@ void add_state_to_container(stateContainer* container, State* state, State* star
         iter = iter->state_down;
     }
     // we reached bottom without assigment; iter_prev holds last entry
-    if (!iter) {
+    if (!iter && iter_prev) {
         iter_prev->state_down = state;
         state->state_up = iter_prev;
         container->state_lb = state;
         container->n_states += 1;
     }
+    state->parent = container;
 }
 
 State* create_state(float value, float* actions, size_t num_scens) {
     State* ret_state = (State*)malloc(sizeof(State));
     ret_state->value = value;
     ret_state->actions = (float*)malloc(NUM_ACTIONS_MAX*sizeof(float));
+    ret_state->reachable_states = (State*)malloc(NUM_ACTIONS_MAX*sizeof(State*));
     ret_state->n_actions = sizeof(actions)/sizeof(actions[0]);
-    memcpy(ret_state->actions, actions, ret_state->n_actions);
-    ret_state->continuation_values = (float*)malloc(num_scens*sizeof(float));
+    memcpy(ret_state->actions, actions, sizeof(float) * ret_state->n_actions);
+    ret_state->continuation_values = (float*)calloc(num_scens,sizeof(float));
     return ret_state;
+}
+
+void set_successor_state(State* from, State* to, size_t action_idx) {
+   from->reachable_states[action_idx] = to;
 }
 
 void remove_state(State* state) {

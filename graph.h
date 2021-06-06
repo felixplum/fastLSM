@@ -21,13 +21,15 @@ struct State {
     float* cv_coeff;            // Fitting params, such that CV(state_k) = Ax
     float cv_expected;          // Expected value of the continuation fn
     size_t n_actions;           // Number of actions
-    State* reachable_states;    // States[i] reachable by taking actions[i]
+    State** reachable_states;    // States[i] reachable by taking actions[i]
     State* state_up;                // neighbour in state container with higher value
     State* state_down;                // neighbour in state container with lower value
+    stateContainer* parent;     
 };
 
 struct stateContainer {
     size_t n_states;        // Number of states
+    size_t n_scens;
     State* state_ub;        // Upper bound state
     State* state_lb;        // Lower bound state
     stateContainer* next;
@@ -36,9 +38,11 @@ struct stateContainer {
     float* payments;        // Paypement per scenarion (i.e. Spot price)
 };
 
-void init_state_containers(size_t num, stateContainer* containers);
+void init_state_containers(size_t num, stateContainer* containers,
+                           float* payments, float* costs, size_t n_scens);
 void free_state_containers(stateContainer* containers);
 void remove_state(State* state);
+void set_successor_state(State* from, State* to, size_t action_idx);
 void add_state_to_container(stateContainer* container, State* state, State* start_state_lookup);
 State* create_state(float value, float* actions, size_t num_scens);
 
