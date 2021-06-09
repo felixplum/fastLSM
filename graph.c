@@ -23,20 +23,18 @@ void free_state_containers(stateContainer* containers) {
 
 void add_state_to_container(stateContainer* container, State* state, State* start_state_lookup) {
     // Todo: Check if node with this value exists already
-    if (!container->state_lb) {
+    if (!container->state_lb || !container->state_ub) {
         container->state_lb = state;
         container->state_ub = state;
         container->n_states += 1;
         state->parent = container;
         return;
     }
-    size_t num_iter = 0;
     State* iter = container->state_ub;
     State* iter_prev = NULL;
     if(start_state_lookup) iter = start_state_lookup;
     // As long as there's a state:
     while(iter) {
-        num_iter+=1;
         if (state->value == iter->value) {
             return;
         }
@@ -63,13 +61,17 @@ void add_state_to_container(stateContainer* container, State* state, State* star
 }
 
 State* create_state(float value, float* actions, size_t num_scens) {
-    State* ret_state = (State*)malloc(sizeof(State));
+    State* ret_state = (State*)calloc(1, sizeof(State));
     ret_state->value = value;
-    ret_state->actions = (float*)malloc(NUM_ACTIONS_MAX*sizeof(float));
-    ret_state->reachable_states = (State**)malloc(NUM_ACTIONS_MAX*sizeof(State*));
+    ret_state->actions = (float*)calloc(NUM_ACTIONS_MAX,sizeof(float));
+    ret_state->reachable_states = (State**)calloc(NUM_ACTIONS_MAX,sizeof(State*));
     ret_state->n_actions = sizeof(actions)/sizeof(actions[0]); // actually available actions
     memcpy(ret_state->actions, actions, sizeof(float) * ret_state->n_actions);
     ret_state->continuation_values = (float*)calloc(num_scens,sizeof(float));
+    ret_state->state_up = NULL;
+    ret_state->state_down = NULL;
+    ret_state->parent = NULL;
+
     return ret_state;
 }
 

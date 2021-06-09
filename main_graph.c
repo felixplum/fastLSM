@@ -115,13 +115,8 @@ void update_contination_value(State* state) {
     float* cont_state = state->continuation_values;
     for (size_t i = 0; i < n_scens; i++)
     {
-        // max_value = -1e10;
+        max_value = -1e10;
         strike_spot_diff = strikes[i] - spots[i];
-        // payoff0 = cont_vals_action_0[i] + strike_spot_diff*actions[0];
-        // payoff1 = cont_vals_action_1[i] + strike_spot_diff*actions[1];
-        // if (payoff0 > payoff1) 
-        //     cont_state[i] = payoff0; 
-        // else cont_state[i] = payoff1;
         for (size_t action_i = 0; action_i < state->n_actions; action_i++)
         {
             cont_i = (state->reachable_states[action_i]->continuation_values)[i];
@@ -130,7 +125,7 @@ void update_contination_value(State* state) {
             if (payoff0> max_value) max_value = payoff0;
         }
         cont_state[i] = max_value;
-            // update continuation for current volume and time in-place
+        // update continuation for current volume and time in-place
     }
     float params[3] = {0.,0.,0};
     regress(spots, state->continuation_values, params, n_scens, 1, 2, true);
@@ -149,10 +144,6 @@ void optimize(stateContainer* containers, size_t n_scens) {
         while (state_iter)
         {
             update_contination_value(state_iter);
-            // print_vec(state_iter->continuation_values, n_scens);
-            if(state_iter == state_iter->state_down) {
-                float a = 12.;
-            }
             state_iter = state_iter->state_down;
         }
     }
@@ -205,37 +196,21 @@ int main()
         .dcq_min = 0.,
         .dcq_max = 100,
         .tcq = 365*100,
-        .tcq_min_final = 200*100.
+        .tcq_min_final = 0.
     };
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
     float* strike_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
     init_dummy_data(strike_scens, spot_scens, N_SCENS, N_STEPS);
-    stateContainer* containers = malloc(N_STEPS * sizeof(stateContainer));
+    stateContainer* containers = calloc(N_STEPS, sizeof(stateContainer));
     init_states(N_STEPS, containers, spot_scens, strike_scens, N_SCENS, deal);
 
-    //optimize(containers, N_SCENS);
-    /////////////////
-    // floatMat *continuation_value = calloc_3D_fmat(N_STEPS, N_GRID, N_SCENS, "Continuation value");
-    // floatMat *volumes = calloc_2D_fmat(N_STEPS, N_GRID, "Volumes");
-    // floatMat *strike_out = calloc_2D_fmat(N_STEPS, N_SCENS, "Strikes");
-    // floatMat *spots = calloc_2D_fmat(N_STEPS, N_SCENS, "Spots");
-
-    // print_2d_mat(retMat);
-    // init_dummy_data(strike_out, spots);
-    // // print_2d_mat(volumes);
-
-    // optimize(continuation_value, volumes, strike_out, spots);
+    optimize(containers, N_SCENS);
 
     // // /////////////////
     end = clock();
     cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
     printf("It took %.5f ms", 1000 * cpu_time_used);
-
-    // free_mat(continuation_value);
-    // free_mat(volumes);
-    // free_mat(strike_out);
-    // free_mat(spots);
     free(spot_scens); free(strike_scens);
     return 0;
 }
