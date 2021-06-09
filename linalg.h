@@ -18,6 +18,7 @@ void free_mat(floatMat* mat);
 
 void regress(float* risk_factors, float* target, float *params_out,
              size_t n_samples, size_t n_rf, size_t order, bool map_data);
+void approx_mean_std(float* values, size_t n_samples, float* mean_out, float* std_out);
 float min(float a, float b);
 float max(float a, float b);
 float max_vec(float* vec, size_t length);

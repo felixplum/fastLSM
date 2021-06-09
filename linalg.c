@@ -41,7 +41,21 @@ void print_2d_mat(floatMat* mat) {
     print_2d_(mat->data, n_rows, n_cols);
 }
 
-void mean(floatMat* mat) {
+void approx_mean_std(float* values, size_t n_samples, float* mean_out, float* std_out) {
+    float sum = 0.;
+    float sum_sq = 0.;
+    for (size_t i = 0; i < n_samples; i++)
+    {
+        sum += values[i];
+    }
+    sum /= n_samples;
+    for (size_t i = 0; i < n_samples; i++)
+    {
+        sum_sq += (sum-values[i])*(sum-values[i]);
+    }
+    
+    *mean_out = sum;
+    *std_out = sqrt(sum_sq/n_samples);
     
 }
 
@@ -51,7 +65,7 @@ void regress(float* risk_factors, float* target, float *params_out,
     // Computes the optimal parameters via stoch. gradient descent
     static int test = 0;
     test +=1;
-    bool debug = false;//test > 400;
+    bool debug = false;//test > 66429;
     size_t n_params = n_rf*(order+1);
     float* rf_i;
     float target_i, rf_i_j;
@@ -64,25 +78,30 @@ void regress(float* risk_factors, float* target, float *params_out,
     float pred_error_i;
     // size_t batch_size = 1;
     float grad_sum_sq = 0.;
-    float learning_rate =  0.5;
+    float learning_rate =  0.1;
     float lr_decay = 0.99;
+    int n_iter = min(n_samples, 1000);
     // float lr_decay = pow(0.01, 1./((float)n_samples));
     
     // Numerical conditioning
-    float target_scale = 1. / max_vec(target, n_samples);
-    float rf_offset = 20;
-    float rf_scale = 1./ (max_vec(risk_factors, n_samples)-rf_offset);
+    float mean_out, std_out, mean_target, std_target;
+    approx_mean_std(risk_factors, min(100, n_samples), &mean_out, &std_out);
+    approx_mean_std(target, min(100, n_samples), &mean_target, &std_target);
+    // mean_target = 0;
+    // std_target = 1.;
+    // float target_scale =1.  / max_vec(target, n_samples);
+    // float rf_scale = 1;//./ (max_vec(risk_factors, n_samples)-rf_offset);
 
-    if ((target_scale > 1.) || rf_scale > 1.) {
-        target_scale = 1.;
-        rf_scale = 1.;
-    }
+    // if ((target_scale > 1.) || rf_scale > 1.) {
+    //     target_scale = 1.;
+    //     rf_scale = 1.;
+    // }
 
     // Iterate over all samples
-    for (size_t i = 0; i < n_samples; i++)
+    for (size_t i = 0; i < n_iter; i++)
     {
         // Compute gradient for current sample
-        target_i = target[i] * target_scale;
+        target_i = (target[i]-mean_target) / std_target;
         rf_i = &(risk_factors[i*n_rf]); // points to rows containing rf at sample i
         target_predict = 0;
         // For each risk factor, build polynomial of order "order"
@@ -94,7 +113,7 @@ void regress(float* risk_factors, float* target, float *params_out,
             // With df(p)/dp =  [1, rf_i_0, rf_i_0², 1, rf_i_1, rf_i_1², ...]
 
             // Pointers to current rf's polynomial for convencience
-            rf_i_j = (rf_i[j]-rf_offset)*rf_scale;
+            rf_i_j = (rf_i[j]-mean_out) / std_out;
             regressors_i_j = &(regressors_i[j*(order+1)]);
             params_j = &(params_out[j*(order+1)]);
             // gradient_i_j = &(gradient_i[j*(order+1)]); 
@@ -161,7 +180,7 @@ void regress(float* risk_factors, float* target, float *params_out,
     // Do final iteration; access average error
     
     // Rescale parameters
-    scale_vec(params_out, n_params, 1./target_scale);
+    // scale_vec(params_out, n_params, 1./target_scale);
     
     // Plot
     if (debug) {
@@ -169,17 +188,19 @@ void regress(float* risk_factors, float* target, float *params_out,
         float diff;
         int k = 0;
         float pred_i;
+        float t_i;
         float x_;
 
         FILE * temp = fopen("data.temp", "w");
 
-        for(int i=0; i < n_samples; i++) {
-            x_ = (risk_factors[i]-rf_offset) *  rf_scale;
+        for(int i=0; i < 300; i++) {
+            x_ = (risk_factors[i]-mean_out) / std_out;
             pred_i = params_out[0] + params_out[1]*x_
                     + params_out[2]*x_*x_;
-            diff = pred_i - target[i];
+            t_i = (target[i]-mean_target) / std_target;
+            diff = pred_i -  t_i;
             error += diff*diff;
-            fprintf(temp, "%lf %lf %lf\n", x_, target[i], pred_i);
+            fprintf(temp, "%lf %lf %lf\n", risk_factors[i], target[i], pred_i*std_target+mean_target);
         }
         fclose(temp);  
 
@@ -201,12 +222,13 @@ void regress(float* risk_factors, float* target, float *params_out,
         float x_;
         for(int i=0; i < n_samples; i++) {
             // TODO: Do in generic way
-            x_ = rf_scale*risk_factors[i];
-            target[i] = params_out[0];
-            for (size_t k = 1; k < n_params; k++)
-            {
-                target[i] += params_out[k]*pow(x_, k);
-            }
+            x_ = (risk_factors[i]-mean_out) / std_out;
+            target[i] = params_out[0] + params_out[1]*x_ + params_out[2]*x_*x_;
+            // for (size_t k = 1; k < n_params; k++)
+            // {
+            //     target[i] += params_out[k]*pow(x_, k);
+            // }
+            target[i] = target[i]*std_target+mean_target;
         }
     }
 

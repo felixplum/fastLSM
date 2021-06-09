@@ -16,43 +16,7 @@ typedef struct contractInfo {
     float tcq_min_final;
 } contractInfo;
 
-#define NELEMS(x) (sizeof(x) / sizeof((x)[0]))
 
-// float continuation_value[num_days][N_GRID][N_SCENS];
-// float volumes[num_days][N_GRID];
-// float strike_out[num_days][N_SCENS];
-// float spots[num_days][N_SCENS];
-
-void init_volume_grid(floatMat *volumes)
-{
-    // Example swing contract: 0% ToP
-    float DCQ_MIN = 0;
-    float DCQ_MAX = 100;
-    float TCQ = 365 * DCQ_MAX;
-    float TCQ_MIN_FINAL = 0;
-    float TCQ_MAX_FINAL = TCQ;
-    float min_prev = TCQ;
-    float max_prev = TCQ;
-    float min_curr, max_curr;
-    float incr;
-    size_t n_steps = volumes->shape[0];
-    size_t n_grid = volumes->shape[1];
-    for (size_t t_i = 0; t_i < n_steps; t_i++)
-    {
-        // Only valid for Swing, i.e. withdrawal only
-        min_curr = max(TCQ_MIN_FINAL, min_prev - DCQ_MAX);
-        max_curr = min(TCQ_MAX_FINAL, max_prev - DCQ_MIN);
-        min_prev = min_curr;
-        max_prev = max_curr;
-        incr = (max_curr - min_curr) / (n_grid - 1);
-        float *v_start_arr = &(volumes->data[t_i * n_grid]); // TODO: Check if written correctly
-        for (int v_idx = 0; v_idx < n_grid; v_idx++)
-        {
-            v_start_arr[v_idx] = min_curr + v_idx * incr;
-            // if (t_i == 0) printf("Time %i: %.2f\n", t_i, v_start_arr[v_idx]);
-        }
-    }
-}
 
 void init_dummy_data(float*strike_out, float* spots, size_t n_scens, size_t n_days)
 {
@@ -60,7 +24,7 @@ void init_dummy_data(float*strike_out, float* spots, size_t n_scens, size_t n_da
     for (size_t day_i = 0; day_i < n_days; day_i++){
         for (size_t i = 0; i < n_scens; i++)
         {
-            spots[day_i*n_scens +i] = 20. + 1. * cos((float)day_i / 365 * 2 * M_PI) +(rand()%100)/100.;
+            spots[day_i*n_scens +i] = 20. + 1. * cos((float)day_i / 365 * 2 * M_PI) +0.1*(rand()%100)/100.;
             // if (day_i > 182)
             //     strike_out[day_i*n_scens+i] = 0;//20.;
             // else strike_out[day_i*n_scens+i] = 1;
@@ -100,19 +64,24 @@ void init_states(size_t num_days, stateContainer* containers,
             for (size_t i_action = 0; i_action < num_actions; i_action++)
             {
                 // apply action i to state
-                value_next = max(tmp_state_from->value + actions[i_action], contract_info.tcq_min_final);
-                if (!state_last || (state_last && state_last->value != value_next)) {
-                    tmp_state_to = create_state(value_next, actions, num_scens);
-                    add_state_to_container(&(containers[t_i+1]), tmp_state_to, state_last);
-                    set_successor_state(tmp_state_from, tmp_state_to, i_action);
-                    state_last = tmp_state_to;
-                } else if (state_last && state_last->value == value_next)
-                {
-                    // state exists, but still needs to be set as successor
-                    set_successor_state(tmp_state_from, state_last, i_action);
+                value_next = tmp_state_from->value + actions[i_action]; //, contract_info.tcq_min_final);
+                if (value_next >= contract_info.tcq_min_final) {
+                    if (!state_last || (state_last && state_last->value != value_next)) {
+                        tmp_state_to = create_state(value_next, actions, num_scens);
+                        add_state_to_container(&(containers[t_i+1]), tmp_state_to, state_last);
+                        set_successor_state(tmp_state_from, tmp_state_to, i_action);
+                        state_last = tmp_state_to;
+                    } else if (state_last && state_last->value == value_next)
+                    {
+                        // state exists, but still needs to be set as successor
+                        set_successor_state(tmp_state_from, state_last, i_action);
+                    }
+                    // printf("add to states t=%i: %.2f\n", t_i+1, value_next);
+                // action not allowed, remove from action set
+                } else {
+                    // TODO: Only mark for removal and do in the end; otherwise bug when removing multiple actions
+                    remove_action(tmp_state_from, actions[i_action]);
                 }
-                
-                // printf("add to states t=%i: %.2f\n", t_i+1, value_next);
             }
             tmp_state_from = tmp_state_from->state_down;
         }
@@ -121,7 +90,7 @@ void init_states(size_t num_days, stateContainer* containers,
         //  &containers[t_i];
         // Iter over number of actions to create nodes in next state
     }
-        printf("states: %i\n", n_states_total);
+    printf("states: %i\n", n_states_total);
 
 }
 
@@ -141,30 +110,30 @@ void update_contination_value(State* state) {
     // We might have to interpolate, though, TODO
     // float** cont_value_lut;
 
-    float* cont_vals_action_0 = (state->reachable_states[0]->continuation_values);
-    float* cont_vals_action_1 = (state->reachable_states[1]->continuation_values);
+    // float* cont_vals_action_0 = (state->reachable_states[0]->continuation_values);
+    // float* cont_vals_action_1 = (state->reachable_states[1]->continuation_values);
     float* cont_state = state->continuation_values;
     for (size_t i = 0; i < n_scens; i++)
     {
-        max_value = -1e10;
+        // max_value = -1e10;
         strike_spot_diff = strikes[i] - spots[i];
-        payoff0 = cont_vals_action_0[i] + strike_spot_diff*actions[0];
-        payoff1 = cont_vals_action_1[i] + strike_spot_diff*actions[1];
-        if (payoff0 > payoff1) 
-            cont_state[i] = payoff0; 
-        else cont_state[i] = payoff1;
-        // for (size_t action_i = 0; action_i < state->n_actions; action_i++)
-        // {
-        //     cont_i = (state->reachable_states[action_i]->continuation_values)[i];
-        //     v_next = state->value + state->actions[action_i];
-        //     payoff = cont_i + (strikes[i] - spots[i])*(state->actions[action_i]);
-        //     if (payoff> max_value) max_value = payoff;
-        // }
-        // state->continuation_values[i] = max_value;
+        // payoff0 = cont_vals_action_0[i] + strike_spot_diff*actions[0];
+        // payoff1 = cont_vals_action_1[i] + strike_spot_diff*actions[1];
+        // if (payoff0 > payoff1) 
+        //     cont_state[i] = payoff0; 
+        // else cont_state[i] = payoff1;
+        for (size_t action_i = 0; action_i < state->n_actions; action_i++)
+        {
+            cont_i = (state->reachable_states[action_i]->continuation_values)[i];
+            v_next = state->value + state->actions[action_i];
+            payoff0 = cont_i + strike_spot_diff*(state->actions[action_i]);
+            if (payoff0> max_value) max_value = payoff0;
+        }
+        cont_state[i] = max_value;
             // update continuation for current volume and time in-place
     }
     float params[3] = {0.,0.,0};
-    regress(spots, state->continuation_values, params, min(1000, n_scens), 1, 2, true);
+    regress(spots, state->continuation_values, params, n_scens, 1, 2, true);
 }
 
 void optimize(stateContainer* containers, size_t n_scens) {
@@ -179,9 +148,11 @@ void optimize(stateContainer* containers, size_t n_scens) {
         // Iter over states top down
         while (state_iter)
         {
-
             update_contination_value(state_iter);
             // print_vec(state_iter->continuation_values, n_scens);
+            if(state_iter == state_iter->state_down) {
+                float a = 12.;
+            }
             state_iter = state_iter->state_down;
         }
     }
@@ -201,7 +172,7 @@ void test_regression()
         x_sample = (rand() % 30);
         rf[i] = x_sample;
         noise = (rand() % 100) / 100.;;
-        target[i] =  400+ x_sample+0.1*x_sample*x_sample + 10000.*noise;
+        target[i] =  2000+ x_sample+10*x_sample*x_sample + 1000.*noise;
     }
     float params[3] = {0, 0, 0};
     // clock_t start, end;
@@ -234,7 +205,7 @@ int main()
         .dcq_min = 0.,
         .dcq_max = 100,
         .tcq = 365*100,
-        .tcq_min_final = 0.
+        .tcq_min_final = 200*100.
     };
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
@@ -243,7 +214,7 @@ int main()
     stateContainer* containers = malloc(N_STEPS * sizeof(stateContainer));
     init_states(N_STEPS, containers, spot_scens, strike_scens, N_SCENS, deal);
 
-    optimize(containers, N_SCENS);
+    //optimize(containers, N_SCENS);
     /////////////////
     // floatMat *continuation_value = calloc_3D_fmat(N_STEPS, N_GRID, N_SCENS, "Continuation value");
     // floatMat *volumes = calloc_2D_fmat(N_STEPS, N_GRID, "Volumes");
@@ -252,7 +223,6 @@ int main()
 
     // print_2d_mat(retMat);
     // init_dummy_data(strike_out, spots);
-    // init_volume_grid(volumes);
     // // print_2d_mat(volumes);
 
     // optimize(continuation_value, volumes, strike_out, spots);
