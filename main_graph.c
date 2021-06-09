@@ -16,35 +16,97 @@ typedef struct contractInfo {
     float tcq_min_final;
 } contractInfo;
 
+double randn (double mu, double sigma)
+{
+  double U1, U2, W, mult;
+  static double X1, X2;
+  static int call = 0;
+  if (call == 1)
+    {
+      call = !call;
+      return (mu + sigma * (double) X2);
+    }
+  do
+    {
+      U1 = -1 + ((double) rand () / RAND_MAX) * 2;
+      U2 = -1 + ((double) rand () / RAND_MAX) * 2;
+      W = pow (U1, 2) + pow (U2, 2);
+    }
+  while (W >= 1 || W == 0);
+ 
+  mult = sqrt ((-2 * log (W)) / W);
+  X1 = U1 * mult;
+  X2 = U2 * mult;
+ 
+  call = !call;
+ 
+  return (mu + sigma * (double) X1);
+}
 
 
-void init_dummy_data(float*strike_out, float* spots, size_t n_scens, size_t n_days)
+// The cumulative normal distribution function
+double CND( double X ){
+    double L, K, w ;
+    double const a1 = 0.31938153, a2 = -0.356563782, a3 = 1.781477937;
+    double const a4 = -1.821255978, a5 = 1.330274429;
+    L = fabs(X);
+    K = 1.0 / (1.0 + 0.2316419 * L);
+    w = 1.0 - 1.0 / sqrt(2 * M_PI) * exp(-L *L / 2) * (a1 * K + a2 * K *K + a3 * pow(K,3) + a4 * pow(K,4) + a5 * pow(K,5));
+    if (X < 0 ){
+        w= 1.0 - w;
+    }
+    return w;
+}
+
+double BlackScholes(char CallPutFlag, double S, double X, double T, double r, double v){
+    // From: https://cseweb.ucsd.edu/~goguen/courses/130/SayBlackScholes.html
+    // T in fraction of a year, X strike, S underlying, v annual std of returns
+    double d1, d2;
+    d1=(log(S/X)+(r+v*v/2)*T)/(v*sqrt(T));
+    d2=d1-v*sqrt(T);
+    if(CallPutFlag == 'c')
+    return S *CND(d1)-X * exp(-r*T)*CND(d2);
+    else if(CallPutFlag == 'p')
+    return X * exp(-r * T) * CND(-d2) - S * CND(-d1);
+}
+
+
+void init_dummy_data_gbm(float*strike_out, float* spots, size_t n_scens, size_t n_days)
 {
     srand(1);
+    float mu = 0.0005; float sigma = 0.01;
+    float noise;
     for (size_t day_i = 0; day_i < n_days; day_i++){
         for (size_t i = 0; i < n_scens; i++)
         {
-            spots[day_i*n_scens +i] = 20. + 1. * cos((float)day_i / 365 * 2 * M_PI) +0.1*(rand()%100)/100.;
-            // if (day_i > 182)
-            //     strike_out[day_i*n_scens+i] = 0;//20.;
-            // else strike_out[day_i*n_scens+i] = 1;
-            strike_out[day_i*n_scens+i] = 19;
+            spots[day_i*n_scens +i] = 20.*exp((mu-0.5*sigma*sigma)*day_i + sigma*randn(0, 1));
+            if (day_i == 300) {
+                printf("%.2f\n", spots[day_i*n_scens +i]);
+            }
+            strike_out[day_i*n_scens+i] = 20;
         }
     }
 }
 
+// void init_dummy_data(float*strike_out, float* spots, size_t n_scens, size_t n_days)
+// {
+//     srand(1);
+//     for (size_t day_i = 0; day_i < n_days; day_i++){
+//         for (size_t i = 0; i < n_scens; i++)
+//         {
+//             spots[day_i*n_scens +i] = 20. + 1. * cos((float)day_i / 365 * 2 * M_PI) +0.1*(rand()%100)/100.;
+//             strike_out[day_i*n_scens+i] = 20.;
+//         }
+//     }
+// }
+
+
 void init_states(size_t num_days, stateContainer* containers,
                  float* spot_scens, float* strike_scens, size_t num_scens,
                  contractInfo contract_info) {
-    // Malloc and basic init:
-    // clock_t start, end;
-    // double cpu_time_used;
-    // start = clock();
 
     init_state_containers(num_days, containers, spot_scens, strike_scens, num_scens);
-    // end = clock();
-    // cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
-    // printf("It took %.5f ms for init state containers\n", 1000 * cpu_time_used);
+
     float actions[2] = {-contract_info.dcq_min, -contract_info.dcq_max};
     size_t num_actions = sizeof(actions)/sizeof(actions[0]);
     // Set first node in first container
@@ -64,7 +126,8 @@ void init_states(size_t num_days, stateContainer* containers,
             for (size_t i_action = 0; i_action < num_actions; i_action++)
             {
                 // apply action i to state
-                value_next = tmp_state_from->value + actions[i_action]; //, contract_info.tcq_min_final);
+                value_next = tmp_state_from->value + actions[i_action];
+                // If action allowed: Create state at t+1
                 if (value_next >= contract_info.tcq_min_final) {
                     if (!state_last || (state_last && state_last->value != value_next)) {
                         tmp_state_to = create_state(value_next, actions, num_scens);
@@ -86,17 +149,11 @@ void init_states(size_t num_days, stateContainer* containers,
             tmp_state_from = tmp_state_from->state_down;
         }
         n_states_total += containers[t_i].n_states;
-        // printf("states: %i\n", containers[t_i].n_states);
-        //  &containers[t_i];
-        // Iter over number of actions to create nodes in next state
     }
     printf("states: %i\n", n_states_total);
 
 }
 
-// void get_interpolated_values(State* node_from, float lookup_value, float* result, size_t n_scens) {
-
-// }
 
 void update_contination_value(State* state) {
     // Our action will lead us here
@@ -108,10 +165,6 @@ void update_contination_value(State* state) {
     float payoff0, payoff1, strike_spot_diff, cont_i, max_value;
     float* actions = state->actions;
     // We might have to interpolate, though, TODO
-    // float** cont_value_lut;
-
-    // float* cont_vals_action_0 = (state->reachable_states[0]->continuation_values);
-    // float* cont_vals_action_1 = (state->reachable_states[1]->continuation_values);
     float* cont_state = state->continuation_values;
     for (size_t i = 0; i < n_scens; i++)
     {
@@ -151,36 +204,36 @@ void optimize(stateContainer* containers, size_t n_scens) {
     free(cont_values_interp);
 }
 
-void test_regression()
-{
-    const size_t n_s = 1000;
-    float rf[n_s];
-    float target[n_s];
-    srand(4711);
-    float x_sample, noise;
-    for (size_t i = 0; i < n_s; i++)
-    {
-        x_sample = (rand() % 30);
-        rf[i] = x_sample;
-        noise = (rand() % 100) / 100.;;
-        target[i] =  2000+ x_sample+10*x_sample*x_sample + 1000.*noise;
-    }
-    float params[3] = {0, 0, 0};
-    // clock_t start, end;
-    // double cpu_time_used;
-    // start = clock();
-    for (size_t i = 0; i < 1; i++)
-    {
-        regress(rf, target, &params, n_s, 1, 2, false);
-    }
-    // end = clock();
-    // cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-    // printf("It took %.5f ms\n", 1000*cpu_time_used);
-    // for (size_t i = 0; i < 3; i++)
-    // {
-    //     printf("Param %i: %.2f \n", i, params[i]);
-    // }
-}
+// void test_regression()
+// {
+//     const size_t n_s = 1000;
+//     float rf[n_s];
+//     float target[n_s];
+//     srand(4711);
+//     float x_sample, noise;
+//     for (size_t i = 0; i < n_s; i++)
+//     {
+//         x_sample = (rand() % 30);
+//         rf[i] = x_sample;
+//         noise = (rand() % 100) / 100.;;
+//         target[i] =  2000+ x_sample+10*x_sample*x_sample + 1000.*noise;
+//     }
+//     float params[3] = {0, 0, 0};
+//     // clock_t start, end;
+//     // double cpu_time_used;
+//     // start = clock();
+//     for (size_t i = 0; i < 1; i++)
+//     {
+//         regress(rf, target, &params, n_s, 1, 2, false);
+//     }
+//     // end = clock();
+//     // cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+//     // printf("It took %.5f ms\n", 1000*cpu_time_used);
+//     // for (size_t i = 0; i < 3; i++)
+//     // {
+//     //     printf("Param %i: %.2f \n", i, params[i]);
+//     // }
+// }
 
 //
 int main()
@@ -201,7 +254,7 @@ int main()
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
     float* strike_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
-    init_dummy_data(strike_scens, spot_scens, N_SCENS, N_STEPS);
+    init_dummy_data_gbm(strike_scens, spot_scens, N_SCENS, N_STEPS);
     stateContainer* containers = calloc(N_STEPS, sizeof(stateContainer));
     init_states(N_STEPS, containers, spot_scens, strike_scens, N_SCENS, deal);
 

@@ -65,7 +65,7 @@ void regress(float* risk_factors, float* target, float *params_out,
     // Computes the optimal parameters via stoch. gradient descent
     static int test = 0;
     test +=1;
-    bool debug = false;//test > 66429;
+    bool debug =false;// test > 40000;
     size_t n_params = n_rf*(order+1);
     float* rf_i;
     float target_i, rf_i_j;
@@ -143,7 +143,7 @@ void regress(float* risk_factors, float* target, float *params_out,
             // gradient_i_j[param_idx] = regressors_i[param_idx]*pred_error_i;
             gradient_i[param_idx] = regressors_i[param_idx]*pred_error_i;
 
-            gradient_avg[param_idx] = 0.9*gradient_avg[param_idx] + 0.1*gradient_i[param_idx]*gradient_i[param_idx];
+            gradient_avg[param_idx] = 0.7*gradient_avg[param_idx] + 0.3*gradient_i[param_idx]*gradient_i[param_idx];
             grad_sum_sq += gradient_avg[param_idx]*gradient_avg[param_idx];
         }
         // Second pass: Update global gradient with normalized gradient
@@ -193,7 +193,7 @@ void regress(float* risk_factors, float* target, float *params_out,
 
         FILE * temp = fopen("data.temp", "w");
 
-        for(int i=0; i < 300; i++) {
+        for(int i=0; i < 1000; i++) {
             x_ = (risk_factors[i]-mean_out) / std_out;
             pred_i = params_out[0] + params_out[1]*x_
                     + params_out[2]*x_*x_;
@@ -201,6 +201,8 @@ void regress(float* risk_factors, float* target, float *params_out,
             diff = pred_i -  t_i;
             error += diff*diff;
             fprintf(temp, "%lf %lf %lf\n", risk_factors[i], target[i], pred_i*std_target+mean_target);
+            // fprintf(temp, "%lf %lf %lf\n", x_, t_i, pred_i*std_target+mean_target);
+
         }
         fclose(temp);  
 
