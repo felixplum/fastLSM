@@ -65,7 +65,7 @@ void regress(float* risk_factors, float* target, float *params_out,
     // Computes the optimal parameters via stoch. gradient descent
     static int test = 0;
     test +=1;
-    bool debug =false;// test > 40000;
+    bool debug = test > 40000;
     size_t n_params = n_rf*(order+1);
     float* rf_i;
     float target_i, rf_i_j;
@@ -270,6 +270,16 @@ float min_vec(float* vec, size_t length) {
     }
     return min;
 }
+
+float mean_vec(float* vec, size_t length) {
+    float sum=0;
+    for (size_t i = 0; i < length; i++)
+    {
+        sum += vec[i];
+    }
+    return sum / (float)length;
+}
+
 
 void print_vec(float* vec, size_t length) {
     for (size_t i = 0; i < length; i++)

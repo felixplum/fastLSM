@@ -70,20 +70,36 @@ double BlackScholes(char CallPutFlag, double S, double X, double T, double r, do
     return X * exp(-r * T) * CND(-d2) - S * CND(-d1);
 }
 
+double compute_option_strip(float r, float sigma, float strike, float s0, size_t n_days) {
+    float sigma_annual = sigma;//*sqrt(365);
+    float value = 0;
+    for (size_t i = 1; i <= n_days; i++)
+    {
+        float t_mat = (float)i/(float)n_days;
+        value += BlackScholes('c', s0, strike, t_mat, r, sigma_annual);
+        if (i==10) {
+            float test = BlackScholes('c', s0, strike, t_mat, r, sigma_annual);
+        }
+    }
+    return value;
+}
 
-void init_dummy_data_gbm(float*strike_out, float* spots, size_t n_scens, size_t n_days)
+
+void init_dummy_data_gbm(float*strike_out, float* spots, size_t n_scens, size_t n_days, float mu, float sigma)
 {
     srand(1);
-    float mu = 0.0005; float sigma = 0.01;
     float noise;
+    float t = 0;
+    const float dt = 1./(float)n_days;
     for (size_t day_i = 0; day_i < n_days; day_i++){
+        t = day_i*dt;
         for (size_t i = 0; i < n_scens; i++)
         {
-            spots[day_i*n_scens +i] = 20.*exp((mu-0.5*sigma*sigma)*day_i + sigma*randn(0, 1));
+            spots[day_i*n_scens +i] = 20.*exp((mu-0.5*sigma*sigma)*t + sqrt(t)*sigma*randn(0, 1));
             if (day_i == 300) {
                 printf("%.2f\n", spots[day_i*n_scens +i]);
             }
-            strike_out[day_i*n_scens+i] = 20;
+            strike_out[day_i*n_scens+i] = 20.;
         }
     }
 }
@@ -200,7 +216,7 @@ void optimize(stateContainer* containers, size_t n_scens) {
             state_iter = state_iter->state_down;
         }
     }
-    printf("Value of contract %.2f\n", containers[0].state_ub->continuation_values[0]);
+    printf("Value of contract %.2f\n", mean_vec(containers[0].state_ub->continuation_values, n_scens));
     free(cont_values_interp);
 }
 
@@ -254,7 +270,10 @@ int main()
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
     float* strike_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
-    init_dummy_data_gbm(strike_scens, spot_scens, N_SCENS, N_STEPS);
+    float mu = 0.01; float sigma = 0.05;
+    init_dummy_data_gbm(strike_scens, spot_scens, N_SCENS, N_STEPS, mu, sigma); 
+    float opt_strip_value = deal.dcq_max*compute_option_strip(mu, sigma, 20., 20., 365);
+    printf("Opion value: %.2f\n", opt_strip_value);
     stateContainer* containers = calloc(N_STEPS, sizeof(stateContainer));
     init_states(N_STEPS, containers, spot_scens, strike_scens, N_SCENS, deal);
 
