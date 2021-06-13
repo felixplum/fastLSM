@@ -109,9 +109,13 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
 
     static int cnt = 0;
     cnt+=1;
-    bool debug = false;//cnt == 65000;
-    float target_scale = 1.;// / 1000.;
-    float feature_scale = 1. / 1000.;
+    bool debug = cnt == 30000;
+    // float target_scale = 1.;// / 1000.;
+    // float feature_scale = 1. / 1000.;
+    float mean_out, std_out, mean_target, std_target;
+    approx_mean_std(risk_factors, min(100, n_samples), &mean_out, &std_out);
+    approx_mean_std(target, min(100, n_samples), &mean_target, &std_target);
+    std_out += 1e-5; std_target += 1e-5;
     // Solve LLS beta = (X^TX)^1 * X^Ty by cholesky decomp.
     const size_t n_params = order+1;
     const size_t n_samples_reg = min(200, n_samples); 
@@ -125,7 +129,7 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
     float x_;
     for (size_t i_row = 0; i_row < n_samples_reg; i_row++)
     {
-        x_ = risk_factors[i_row]*feature_scale;
+        x_ = (risk_factors[i_row]-mean_out)/std_out;
         for (size_t i_col = 0; i_col < n_params; i_col++)
         {
             X[i_row*n_params+i_col] = pow(x_, i_col);
@@ -140,7 +144,7 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
     {
         for (size_t k = 0; k < n_samples_reg; k++)
         {
-            rhs[i] += X_T[i*n_samples_reg+k]*target[k] * target_scale;
+            rhs[i] += X_T[i*n_samples_reg+k]*target[k] / std_target;
         }
     }
 
@@ -174,9 +178,9 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
     L_L_T_solve(L, rhs, params_out, n_params);
     if (debug) {
         // printf("X^TX: \n");print_2d_(X_T_X, n_params, n_params);
-        printf("L: \n"); print_2d_(L, n_params, n_params);
-        printf("RHS: \n"); print_vec(rhs, n_params);
-        printf("Params: \n");print_vec(params_out, n_params);
+        // printf("L: \n"); print_2d_(L, n_params, n_params);
+        // printf("RHS: \n"); print_vec(rhs, n_params);
+        // printf("Params: \n");print_vec(params_out, n_params);
     }
 
     if (debug) {
@@ -190,9 +194,9 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
             FILE * temp = fopen("data.temp", "w");
 
             for(int i=0; i < 1000; i++) {
-                x_ = risk_factors[i] * feature_scale;
+                x_ = (risk_factors[i]-mean_out)/std_out;
                 pred_i = (params_out[0] + params_out[1]*x_
-                        + params_out[2]*x_*x_ + params_out[3]*x_*x_*x_)/target_scale;
+                        + params_out[2]*x_*x_ + params_out[3]*x_*x_*x_)*std_target;
                 t_i = (target[i]);
                 diff = pred_i -  t_i;
                 error += diff*diff;
@@ -202,7 +206,7 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
             }
             fclose(temp);  
 
-            FILE *gnuplot = popen("gnuplot", "w");
+            FILE *gnuplot = popen("gnuplot --persist", "w");
             // fprintf(gnuplot, "set style line 3 lt 1 lw 3 pt 3 lc rgb 'blue'\n");
             // fprintf(gnuplot, "set style line 2 lc rgb 'blue'\n");
             fprintf(gnuplot, "plot 'data.temp' using 1:3 lc rgb 'black'\n");
@@ -220,8 +224,8 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
         assert(n_rf==1);
         float x_;
         for(int i=0; i < n_samples; i++) {
-            x_ = (risk_factors[i]*feature_scale);
-            target[i] = (params_out[0] + params_out[1]*x_ + params_out[2]*x_*x_ + params_out[3]*x_*x_*x_)/target_scale;
+            x_ = (risk_factors[i]-mean_out)/std_out;
+            target[i] = (params_out[0] + params_out[1]*x_ + params_out[2]*x_*x_ + params_out[3]*x_*x_*x_)*std_target;
 
             // target[i] = params_out[0];// + params_out[1]*x_ + params_out[2]*x_*x_ + params_out[3]*x_*x_*x_;
             // for (size_t k = 1; k < n_params; k++)

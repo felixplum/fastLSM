@@ -71,12 +71,14 @@ double BlackScholes(char CallPutFlag, double S, double X, double T, double r, do
 }
 
 double compute_option_strip(float r, float sigma, float strike, float s0, size_t n_days) {
+    // Calls Black scholes, but un-discounts the value of the price of the option itself
     float sigma_annual = sigma;//*sqrt(365);
     float value = 0;
+    float r_d = pow(1.+r, 1./365.); // daily risk-free return from annual one
     for (size_t i = 1; i <= n_days; i++)
     {
         float t_mat = (float)i/(float)n_days;
-        value += BlackScholes('c', s0, strike, t_mat, r, sigma_annual);
+        value += pow(r_d, i)*BlackScholes('c', s0, strike, t_mat, r, sigma_annual);
         if (i==10) {
             float test = BlackScholes('c', s0, strike, t_mat, r, sigma_annual);
         }
@@ -197,7 +199,14 @@ void update_contination_value(State* state) {
         // update continuation for current volume and time in-place
     }
     float params[4] = {0.,0.,0, 0.};
-    regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
+    if (parent_container->prev) {
+        regress_cholesky(parent_container->prev->payments, state->continuation_values, params, n_scens, 1, 3, true);
+
+    } else {
+        regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
+    }
+        // regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
+
 
 }
 
@@ -285,10 +294,13 @@ int main()
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
     float* strike_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
-    float mu = 0.1; float sigma = 0.1;
+    float mu = 0.3; float sigma = 0.0001;
     init_dummy_data_gbm(strike_scens, spot_scens, N_SCENS, N_STEPS, mu, sigma); 
+    // printf("Opion value: %.2f\n", BlackScholes('c', 20., 20., 365./365., mu, sigma));
     float opt_strip_value = deal.dcq_max*compute_option_strip(mu, sigma, 20., 20., 365);
-    printf("Opion value: %.2f\n", opt_strip_value);
+    printf("Opion value: %.2f\n",opt_strip_value);
+    // exit(0);
+
     stateContainer* containers = calloc(N_STEPS, sizeof(stateContainer));
     init_states(N_STEPS, containers, spot_scens, strike_scens, N_SCENS, deal);
 
