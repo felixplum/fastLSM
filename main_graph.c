@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-const int N_SCENS = 10000;
+const int N_SCENS = 2000;
 const int N_STEPS = 365;
 
 typedef struct contractInfo {
@@ -196,23 +196,30 @@ void update_contination_value(State* state) {
         cont_state[i] = max_value;
         // update continuation for current volume and time in-place
     }
-    float params[3] = {0.,0.,0};
-    regress(spots, state->continuation_values, params, n_scens, 1, 2, true);
+    float params[4] = {0.,0.,0, 0.};
+    regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
+
 }
 
 void optimize(stateContainer* containers, size_t n_scens) {
     size_t n_steps = N_STEPS;//sizeof(containers)/sizeof(containers);       TODO
     stateContainer* container_t;
     State* state_iter, *state_next;
+    float expected_value;
     float* cont_values_interp = malloc(n_scens*sizeof(float)); // tmp data store
     float v_next;
     for (int t_i = n_steps-2; t_i >= 0; t_i--)
     {
+        // if (t_i == 0) {
+        //     float abc = 123;
+        // }
         state_iter = containers[t_i].state_ub;
         // Iter over states top down
         while (state_iter)
         {
             update_contination_value(state_iter);
+            // expected_value = mean_vec(state_iter->continuation_values, n_scens);
+            // printf("t=%i, state=%i, expt: %.2f", t_i, state_idx, expected_value);
             state_iter = state_iter->state_down;
         }
     }
@@ -220,36 +227,44 @@ void optimize(stateContainer* containers, size_t n_scens) {
     free(cont_values_interp);
 }
 
-// void test_regression()
-// {
-//     const size_t n_s = 1000;
-//     float rf[n_s];
-//     float target[n_s];
-//     srand(4711);
-//     float x_sample, noise;
-//     for (size_t i = 0; i < n_s; i++)
-//     {
-//         x_sample = (rand() % 30);
-//         rf[i] = x_sample;
-//         noise = (rand() % 100) / 100.;;
-//         target[i] =  2000+ x_sample+10*x_sample*x_sample + 1000.*noise;
-//     }
-//     float params[3] = {0, 0, 0};
-//     // clock_t start, end;
-//     // double cpu_time_used;
-//     // start = clock();
-//     for (size_t i = 0; i < 1; i++)
-//     {
-//         regress(rf, target, &params, n_s, 1, 2, false);
-//     }
-//     // end = clock();
-//     // cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
-//     // printf("It took %.5f ms\n", 1000*cpu_time_used);
-//     // for (size_t i = 0; i < 3; i++)
-//     // {
-//     //     printf("Param %i: %.2f \n", i, params[i]);
-//     // }
-// }
+void test_regression()
+{
+
+    // float L[4] = {1,0,2,1};
+    // float rhs[2] = {1, 5};
+    // float out[2];
+    // L_L_T_solve(L, rhs, out, 2);
+    // print_vec(out, 2);
+    // exit(0);
+    const size_t n_s = 1000;
+    float rf[n_s];
+    float target[n_s];
+    srand(4711);
+    float x_sample, noise;
+    for (size_t i = 0; i < n_s; i++)
+    {
+        // x_sample = (rand() % 30);
+        // rf[i] = x_sample;
+        // noise = (rand() % 100) / 100.;;
+        // target[i] =  2000+ x_sample+10*x_sample*x_sample + 1000.*noise;
+
+        x_sample = i;
+        rf[i] = x_sample;
+        target[i] =  x_sample*x_sample;
+    }
+    float params[3] = {0, 0, 0};
+    // clock_t start, end;
+    // double cpu_time_used;
+    // start = clock();
+    regress_cholesky(rf, target, params, n_s, 1, 2, false);
+    // end = clock();
+    // cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    // printf("It took %.5f ms\n", 1000*cpu_time_used);
+    // for (size_t i = 0; i < 3; i++)
+    // {
+    //     printf("Param %i: %.2f \n", i, params[i]);
+    // }
+}
 
 //
 int main()
@@ -270,7 +285,7 @@ int main()
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
     float* strike_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
-    float mu = 0.01; float sigma = 0.05;
+    float mu = 0.1; float sigma = 0.1;
     init_dummy_data_gbm(strike_scens, spot_scens, N_SCENS, N_STEPS, mu, sigma); 
     float opt_strip_value = deal.dcq_max*compute_option_strip(mu, sigma, 20., 20., 365);
     printf("Opion value: %.2f\n", opt_strip_value);

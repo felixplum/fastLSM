@@ -1,6 +1,24 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+
+
+L = np.array([[1.73, 0.00, 0.00], 
+[1.73, 1.41, 0.00], 
+[2.89, 2.83, 0.82]])
+LL = L@L.T
+rhs  = np.array([5.000, 9.000, 17.000])
+
+b0 = np.linalg.solve(L, rhs)
+print(b0)
+b = np.linalg.solve(L.T, b0)
+print(b, LL@b)
+# b0 [2.89017341 2.83687943 0.75491469]
+# b [-0.03149329  0.1641866   0.92062768] [ 5.  9. 17.]
+# sol = np.linalg.solve(LL, rhs) #[9.75777426 0.27579541 0.94069045]
+# print(sol, LL @ sol)
+exit()
+
 x,y, y_, y_sgd = [], [], [], []
 a,b,c= 3.5, 4.3, 3
 n_sample = 100
