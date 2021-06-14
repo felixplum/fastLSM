@@ -106,17 +106,19 @@ void init_dummy_data_gbm(float*strike_out, float* spots, size_t n_scens, size_t 
     }
 }
 
-// void init_dummy_data(float*strike_out, float* spots, size_t n_scens, size_t n_days)
-// {
-//     srand(1);
-//     for (size_t day_i = 0; day_i < n_days; day_i++){
-//         for (size_t i = 0; i < n_scens; i++)
-//         {
-//             spots[day_i*n_scens +i] = 20. + 1. * cos((float)day_i / 365 * 2 * M_PI) +0.1*(rand()%100)/100.;
-//             strike_out[day_i*n_scens+i] = 20.;
-//         }
-//     }
-// }
+void init_dummy_data(float*strike_out, float* spots, size_t n_scens, size_t n_days)
+{
+    srand(1);
+    float t;
+    for (size_t day_i = 0; day_i < n_days; day_i++){
+        t = 1.*(float)day_i / 365.;
+        for (size_t i = 0; i < n_scens; i++)
+        {
+            spots[day_i*n_scens +i] = 20. + 1. * cos((float)day_i / 365 * 2 * M_PI) +t*(rand()%100)/100.;
+            strike_out[day_i*n_scens+i] = 20.;
+        }
+    }
+}
 
 
 void init_states(size_t num_days, stateContainer* containers,
@@ -184,6 +186,7 @@ void update_contination_value(State* state) {
     float* actions = state->actions;
     // We might have to interpolate, though, TODO
     float* cont_state = state->continuation_values;
+    size_t best_action_idx;
     for (size_t i = 0; i < n_scens; i++)
     {
         max_value = -1e10;
@@ -193,11 +196,18 @@ void update_contination_value(State* state) {
             cont_i = (state->reachable_states[action_i]->continuation_values)[i];
             v_next = state->value + state->actions[action_i];
             payoff0 = cont_i + strike_spot_diff*(state->actions[action_i]);
-            if (payoff0> max_value) max_value = payoff0;
+            if (payoff0 > max_value) {
+                max_value = payoff0;
+                best_action_idx = action_i;
+            }
         }
+        state->transition_probs[best_action_idx] += 1./(float)n_scens;
+
         cont_state[i] = max_value;
         // update continuation for current volume and time in-place
     }
+    // printf("%.3f %.3f\n",state->transition_probs[0], state->transition_probs[1]);
+
     float params[4] = {0.,0.,0, 0.};
     if (parent_container->prev) {
         regress_cholesky(parent_container->prev->payments, state->continuation_values, params, n_scens, 1, 3, true);
@@ -206,8 +216,18 @@ void update_contination_value(State* state) {
         regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
     }
         // regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
+}
 
+void writeMat(float* mat, size_t rows, size_t cols) {
 
+   FILE *fp;
+   size_t n = rows*cols;
+   fp = fopen("mat_out.txt", "w+");
+   for (size_t i = 0; i < n; i++)
+   {
+        fprintf(fp, "%.5f\n", mat[i]);
+   }
+   fclose(fp);
 }
 
 void optimize(stateContainer* containers, size_t n_scens) {
@@ -215,13 +235,11 @@ void optimize(stateContainer* containers, size_t n_scens) {
     stateContainer* container_t;
     State* state_iter, *state_next;
     float expected_value;
-    float* cont_values_interp = malloc(n_scens*sizeof(float)); // tmp data store
     float v_next;
+
+    // Backward pass
     for (int t_i = n_steps-2; t_i >= 0; t_i--)
     {
-        // if (t_i == 0) {
-        //     float abc = 123;
-        // }
         state_iter = containers[t_i].state_ub;
         // Iter over states top down
         while (state_iter)
@@ -233,7 +251,28 @@ void optimize(stateContainer* containers, size_t n_scens) {
         }
     }
     printf("Value of contract %.2f\n", mean_vec(containers[0].state_ub->continuation_values, n_scens));
-    free(cont_values_interp);
+    // Compute sensitivites
+    float* prob_matrix = calloc(n_steps*365, sizeof(float));
+    containers[0].state_ub->ds_ds0 = 1.;
+    for (size_t t_i = 0; t_i < n_steps-1; t_i++)
+    {
+        state_iter = containers[t_i].state_ub;
+        // Iter over states top down
+        size_t node_idx = 0;
+        while (state_iter)
+        {
+            for (size_t action_i = 0; action_i < state_iter->n_actions; action_i++)
+            {
+                state_iter->reachable_states[action_i]->ds_ds0 += 
+                    state_iter->ds_ds0 * state_iter->transition_probs[action_i];
+            }
+            prob_matrix[t_i*365+node_idx] = state_iter->ds_ds0;
+            node_idx += 1;
+            state_iter = state_iter->state_down;
+        }        
+    }
+    writeMat(prob_matrix, 365, n_steps);
+    free(prob_matrix);   
 }
 
 void test_regression()
@@ -289,16 +328,19 @@ int main()
         .dcq_min = 0.,
         .dcq_max = 100,
         .tcq = 365*100,
-        .tcq_min_final = 0.
+        .tcq_min_final = 180*100.
     };
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
     float* strike_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
-    float mu = 0.3; float sigma = 0.0001;
+    
+    // init_dummy_data(strike_scens, spot_scens, N_SCENS, N_STEPS); 
+    
+    float mu = 0.2; float sigma = 0.1;
     init_dummy_data_gbm(strike_scens, spot_scens, N_SCENS, N_STEPS, mu, sigma); 
     // printf("Opion value: %.2f\n", BlackScholes('c', 20., 20., 365./365., mu, sigma));
-    float opt_strip_value = deal.dcq_max*compute_option_strip(mu, sigma, 20., 20., 365);
-    printf("Opion value: %.2f\n",opt_strip_value);
+    // float opt_strip_value = deal.dcq_max*compute_option_strip(mu, sigma, 20., 20., 365);
+    // printf("Option value: %.2f\n",opt_strip_value);
     // exit(0);
 
     stateContainer* containers = calloc(N_STEPS, sizeof(stateContainer));

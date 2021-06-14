@@ -1,6 +1,6 @@
 #include "graph.h"
 
-#define NUM_ACTIONS_MAX 10
+#define NUM_ACTIONS_MAX 3
 
 void init_state_containers(size_t num, stateContainer* containers,
       float* payments, float* costs, size_t n_scens) {
@@ -64,6 +64,8 @@ State* create_state(float value, float* actions, size_t num_scens) {
     State* ret_state = (State*)calloc(1, sizeof(State));
     ret_state->value = value;
     ret_state->actions = (float*)calloc(NUM_ACTIONS_MAX,sizeof(float));
+    ret_state->transition_probs = (float*)calloc(NUM_ACTIONS_MAX,sizeof(float));
+    ret_state->ds_ds0 = 0.;
     ret_state->reachable_states = (State**)calloc(NUM_ACTIONS_MAX,sizeof(State*));
     ret_state->n_actions = sizeof(actions)/sizeof(actions[0]); // actually available actions
     memcpy(ret_state->actions, actions, sizeof(float) * ret_state->n_actions);
@@ -94,6 +96,7 @@ void remove_action(State* state, float action) {
             int n_actions_to_move = state->n_actions-i-1;
             if (n_actions_to_move > 0) {
                 memmove(state->actions+i+1, state->actions+i, n_actions_to_move);
+                memmove(state->transition_probs+i+1, state->transition_probs+i, n_actions_to_move);
             }
             state->n_actions--;
             return;

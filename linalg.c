@@ -464,7 +464,6 @@ float mean_vec(float* vec, size_t length) {
     return sum / (float)length;
 }
 
-
 void print_vec(float* vec, size_t length) {
     for (size_t i = 0; i < length; i++)
     {
