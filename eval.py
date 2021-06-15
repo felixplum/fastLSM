@@ -14,7 +14,7 @@ for l in lines:
     idx += 1
 
 mat = np.reshape(mat, (365, 365)).T
-mat = mat[130:200, 250:]
+# mat = mat[130:200, 250:]
 fig = plt.figure()
 ax1 = fig.add_subplot(111)
 # Bilinear interpolation - this will look blurry

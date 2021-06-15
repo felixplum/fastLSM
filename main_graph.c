@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-const int N_SCENS = 2000;
+const int N_SCENS = 5000;
 const int N_STEPS = 365;
 
 typedef struct contractInfo {
@@ -187,6 +187,9 @@ void update_contination_value(State* state) {
     // We might have to interpolate, though, TODO
     float* cont_state = state->continuation_values;
     size_t best_action_idx;
+    float expected_value = 0.;
+    float* coeff;
+    float delta = 0.;
     for (size_t i = 0; i < n_scens; i++)
     {
         max_value = -1e10;
@@ -202,12 +205,15 @@ void update_contination_value(State* state) {
             }
         }
         state->transition_probs[best_action_idx] += 1./(float)n_scens;
-
+        // Compute delta
+        coeff = state->reachable_states[best_action_idx]->cv_coeff;
+        delta += -state->actions[best_action_idx];//  + coeff[1] + 2*coeff[2]*spots[i] + 3*coeff[3]*spots[i]*spots[i];
         cont_state[i] = max_value;
+        expected_value += max_value;
         // update continuation for current volume and time in-place
     }
     // printf("%.3f %.3f\n",state->transition_probs[0], state->transition_probs[1]);
-
+    state->expected_value = expected_value / (float)n_scens;
     float params[4] = {0.,0.,0, 0.};
     if (parent_container->prev) {
         regress_cholesky(parent_container->prev->payments, state->continuation_values, params, n_scens, 1, 3, true);
@@ -215,6 +221,10 @@ void update_contination_value(State* state) {
     } else {
         regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
     }
+
+    state->delta = delta / (float)n_scens;
+
+    memcpy(state->cv_coeff, params, 4);
         // regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
 }
 
@@ -254,11 +264,13 @@ void optimize(stateContainer* containers, size_t n_scens) {
     // Compute sensitivites
     float* prob_matrix = calloc(n_steps*365, sizeof(float));
     containers[0].state_ub->ds_ds0 = 1.;
+    float delta_total = 0.;
     for (size_t t_i = 0; t_i < n_steps-1; t_i++)
     {
         state_iter = containers[t_i].state_ub;
         // Iter over states top down
         size_t node_idx = 0;
+        float delta_avg = 0.;
         while (state_iter)
         {
             for (size_t action_i = 0; action_i < state_iter->n_actions; action_i++)
@@ -266,12 +278,23 @@ void optimize(stateContainer* containers, size_t n_scens) {
                 state_iter->reachable_states[action_i]->ds_ds0 += 
                     state_iter->ds_ds0 * state_iter->transition_probs[action_i];
             }
+            // float mean, std;
+            // approx_mean_std(state_iter->continuation_values, n_scens, &mean, &std);
+            // (mean*3*std)*
+            state_iter->delta *= state_iter->ds_ds0;
+            delta_avg += state_iter->delta;
             prob_matrix[t_i*365+node_idx] = state_iter->ds_ds0;
             node_idx += 1;
+            // Next node
             state_iter = state_iter->state_down;
-        }        
+        } 
+        delta_avg = delta_avg;
+        delta_total += delta_avg;
+        // printf("Delta t_i = %i is: %.3f\n", t_i, delta_avg);
     }
     writeMat(prob_matrix, 365, n_steps);
+    printf("Total delta is: %.3f\n", delta_total);
+
     free(prob_matrix);   
 }
 
@@ -328,7 +351,7 @@ int main()
         .dcq_min = 0.,
         .dcq_max = 100,
         .tcq = 365*100,
-        .tcq_min_final = 180*100.
+        .tcq_min_final = 0.
     };
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
@@ -336,11 +359,13 @@ int main()
     
     // init_dummy_data(strike_scens, spot_scens, N_SCENS, N_STEPS); 
     
-    float mu = 0.2; float sigma = 0.1;
+    float mu = 0.2; float sigma = 0.2;
     init_dummy_data_gbm(strike_scens, spot_scens, N_SCENS, N_STEPS, mu, sigma); 
     // printf("Opion value: %.2f\n", BlackScholes('c', 20., 20., 365./365., mu, sigma));
-    // float opt_strip_value = deal.dcq_max*compute_option_strip(mu, sigma, 20., 20., 365);
-    // printf("Option value: %.2f\n",opt_strip_value);
+    float opt_strip_value = deal.dcq_max*compute_option_strip(mu, sigma, 20., 20., 365);
+    float delta = deal.dcq_max*(compute_option_strip(mu, sigma, 20., 20.01, 365) - compute_option_strip(mu, sigma, 20., 20., 365))/0.01;
+    printf("Option value: %.2f\n",opt_strip_value);
+    printf("Option delta is %.3f\n", delta);
     // exit(0);
 
     stateContainer* containers = calloc(N_STEPS, sizeof(stateContainer));

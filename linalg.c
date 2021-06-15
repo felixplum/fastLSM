@@ -109,7 +109,7 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
 
     static int cnt = 0;
     cnt+=1;
-    bool debug = cnt == 30000;
+    bool debug = false;//cnt == 30000;
     // float target_scale = 1.;// / 1000.;
     // float feature_scale = 1. / 1000.;
     float mean_out, std_out, mean_target, std_target;

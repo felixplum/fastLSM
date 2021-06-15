@@ -65,7 +65,9 @@ State* create_state(float value, float* actions, size_t num_scens) {
     ret_state->value = value;
     ret_state->actions = (float*)calloc(NUM_ACTIONS_MAX,sizeof(float));
     ret_state->transition_probs = (float*)calloc(NUM_ACTIONS_MAX,sizeof(float));
+    ret_state->cv_coeff = (float*)calloc(4,sizeof(float));
     ret_state->ds_ds0 = 0.;
+    ret_state->expected_value = 0.;
     ret_state->reachable_states = (State**)calloc(NUM_ACTIONS_MAX,sizeof(State*));
     ret_state->n_actions = sizeof(actions)/sizeof(actions[0]); // actually available actions
     memcpy(ret_state->actions, actions, sizeof(float) * ret_state->n_actions);
