@@ -20,6 +20,7 @@ struct State {
     float* transition_probs;    // Probability for actions[i]
     float* cv_coeff;            // Fitting params, such that CV(state_k) = Ax
     float  delta;
+    bool skip_node;             // Skips, accessor state takes then neighbor instead (interpolation?)
     float expected_value;          // Expected value of the continuation fn
     float ds_ds0;                // State probability = Sensitivity dS_i/dS0 of this node
     size_t n_actions;           // Number of actions
