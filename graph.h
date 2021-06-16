@@ -48,6 +48,7 @@ void remove_state(State* state);
 void set_successor_state(State* from, State* to, size_t action_idx);
 void add_state_to_container(stateContainer* container, State* state, State* start_state_lookup);
 void remove_action(State* state, float action);
+State* get_next_computed_node(State* from_node);
 State* create_state(float value, float* actions, size_t num_scens);
 
 #endif 

@@ -80,6 +80,20 @@ State* create_state(float value, float* actions, size_t num_scens) {
     return ret_state;
 }
 
+State* get_next_computed_node(State* from_node) {
+    if (!from_node->skip_node) return from_node;
+    // Iterate up- and downwards simultaneously
+    State* node_up, *node_down;
+    node_up = from_node->state_up;
+    node_down = from_node->state_down;
+    while(true) {
+        if(node_up && !node_up->skip_node) return node_up;
+        if(node_down && !node_down->skip_node) return node_down;
+        node_up = node_up->state_up;
+        node_down = node_up->state_down;
+    }
+}
+
 void set_successor_state(State* from, State* to, size_t action_idx) {
    from->reachable_states[action_idx] = to;
 }
