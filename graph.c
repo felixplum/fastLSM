@@ -12,6 +12,7 @@ void init_state_containers(size_t num, stateContainer* containers,
         containers[i].costs = &(costs[i*n_scens]);
         containers[i].state_lb = NULL;
         containers[i].state_ub = NULL;
+        containers[i].payments_mean = mean_vec(payments, min(1000, n_scens));
         if (i < num-1) containers[i].next = &(containers[i+1]);
         if (i > 0) containers[i].prev = &(containers[i-1]);
     }    

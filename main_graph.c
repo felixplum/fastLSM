@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-const int N_SCENS = 5000;
+const int N_SCENS = 2000;
 const int N_STEPS = 365;
 
 typedef struct contractInfo {
@@ -190,6 +190,7 @@ void update_contination_value(State* state) {
     float expected_value = 0.;
     float* coeff;
     float delta = 0.;
+    float spot_mean_inv = 1./parent_container->payments_mean;
     for (size_t i = 0; i < n_scens; i++)
     {
         max_value = -1e10;
@@ -207,7 +208,8 @@ void update_contination_value(State* state) {
         state->transition_probs[best_action_idx] += 1./(float)n_scens;
         // Compute delta
         coeff = state->reachable_states[best_action_idx]->cv_coeff;
-        delta += -state->actions[best_action_idx];//  + coeff[1] + 2*coeff[2]*spots[i] + 3*coeff[3]*spots[i]*spots[i];
+        // TODO: 
+        delta += -state->actions[best_action_idx]*spots[i]*spot_mean_inv;//  + coeff[1] + 2*coeff[2]*spots[i] + 3*coeff[3]*spots[i]*spots[i];
         cont_state[i] = max_value;
         expected_value += max_value;
         // update continuation for current volume and time in-place
