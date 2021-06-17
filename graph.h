@@ -38,6 +38,7 @@ struct stateContainer {
     State* state_lb;        // Lower bound state
     stateContainer* next;
     stateContainer* prev;
+    int t_i;
     float* costs;           // Costs per scenario (i.e. Strike); there might be costs-per-action-type later on
     float* payments;        // Paypement per scenarion (i.e. Spot price)
     float payments_mean;

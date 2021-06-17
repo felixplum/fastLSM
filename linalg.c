@@ -59,11 +59,10 @@ void approx_mean_std(float* values, size_t n_samples, float* mean_out, float* st
     
 }
 
-float *cholesky(float *A, int n) {
-    float *L = (float*)calloc(n * n, sizeof(float));
+void cholesky(float *A, int n, float* L) {
     if (L == NULL)
         exit(EXIT_FAILURE);
- 
+    memset(L, 0., n*n*sizeof(float));
     for (int i = 0; i < n; i++)
         for (int j = 0; j < (i+1); j++) {
             float s = 0;
@@ -105,9 +104,17 @@ float L_L_T_solve(float* L, float* rhs, float*out, size_t n) {
 
 
 void regress_cholesky(float* risk_factors, float* target, float *params_out,
-             size_t n_samples, size_t n_rf, size_t order, bool map_data) {
+             size_t n_samples, size_t n_rf, size_t order, bool map_data,  int cache_idx) {
 
+    static int last_cache_idx = -1;
+    static bool is_init = false;
     static int cnt = 0;
+    static float* X ;
+    static float* X_T;
+    static float* X_T_X;
+    static float* rhs;
+    static float* params_est;
+    static float* L;
     cnt+=1;
     bool debug = false;//cnt == 30000;
     // float target_scale = 1.;// / 1000.;
@@ -119,63 +126,76 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
     // Solve LLS beta = (X^TX)^1 * X^Ty by cholesky decomp.
     const size_t n_params = order+1;
     const size_t n_samples_reg = min(200, n_samples); 
-    float* X = malloc(n_params*n_samples_reg*sizeof(float));
-    float* X_T = malloc(n_params*n_samples_reg*sizeof(float));
-    float* X_T_X = calloc(n_params*n_params,sizeof(float));
-    float* rhs = calloc(n_samples_reg,sizeof(float));
-    float* params_est = malloc(n_params*sizeof(float));
-    // float* L = calloc(n_params*n_params,sizeof(float));
-    // Compute feature vecs
-    float x_;
-    for (size_t i_row = 0; i_row < n_samples_reg; i_row++)
-    {
-        x_ = (risk_factors[i_row]-mean_out)/std_out;
-        for (size_t i_col = 0; i_col < n_params; i_col++)
-        {
-            X[i_row*n_params+i_col] = pow(x_, i_col);
-            X_T[i_col*n_samples_reg+i_row] = X[i_row*n_params+i_col];
-        }
+
+
+    if (!is_init) {
+        X = malloc(n_params*n_samples_reg*sizeof(float));
+        X_T = malloc(n_params*n_samples_reg*sizeof(float));
+        X_T_X = calloc(n_params*n_params,sizeof(float));
+        rhs = calloc(n_samples_reg,sizeof(float));
+        L = (float*)calloc(n_params * n_params, sizeof(float));
+        params_est = malloc(n_params*sizeof(float));
+        is_init = true;
     }
+    if (last_cache_idx != cache_idx) {
+        // Compute feature vecs
+        float x_;
+        for (size_t i_row = 0; i_row < n_samples_reg; i_row++)
+        {
+            x_ = (risk_factors[i_row]-mean_out)/std_out;
+            for (size_t i_col = 0; i_col < n_params; i_col++)
+            {
+                X[i_row*n_params+i_col] = pow(x_, i_col);
+                X_T[i_col*n_samples_reg+i_row] = X[i_row*n_params+i_col];
+            }
+        }
+
+        // Compute X^T * X
+        float tmp = 0.;
+        float* row_ptr, *col_ptr;
+        for (size_t i_row = 0; i_row < n_params; i_row++)
+        {
+            row_ptr = X_T + i_row*n_samples_reg;
+            for (size_t i_col = 0; i_col < n_params; i_col++)
+            {
+                // Column of X is same as row of X_T
+                col_ptr = X_T + i_col*n_samples_reg;
+                tmp = 0.;
+                for (size_t k = 0; k < n_samples_reg; k++)
+                {
+                    tmp +=  row_ptr[k] * col_ptr[k];
+                }
+                if (i_row == i_col) tmp += 1e-6; // numerical stability
+
+                X_T_X[i_row*n_params + i_col] = tmp;
+            }
+        } 
+        // Compute cholesky decom. X_T_X = LL^T
+        cholesky(X_T_X, n_params, L);
+
+        last_cache_idx = cache_idx;
+    }
+ 
     // printf("X: \n"); print_2d_(X, n_samples_reg, n_params);
     // printf("X^T: \n");print_2d_(X_T, n_params, n_samples_reg);
 
     // Compute rhs of LLS, i.e. X^Ty
     for (size_t i = 0; i < n_params; i++)
     {
+        rhs[i] = 0.;
         for (size_t k = 0; k < n_samples_reg; k++)
         {
             rhs[i] += X_T[i*n_samples_reg+k]*target[k] / std_target;
         }
     }
 
-    // Compute X^T * X
-    float tmp = 0.;
-    float* row_ptr, *col_ptr;
-    for (size_t i_row = 0; i_row < n_params; i_row++)
-    {
-        row_ptr = X_T + i_row*n_samples_reg;
-        for (size_t i_col = 0; i_col < n_params; i_col++)
-        {
-            // Column of X is same as row of X_T
-            col_ptr = X_T + i_col*n_samples_reg;
-            tmp = 0.;
-            for (size_t k = 0; k < n_samples_reg; k++)
-            {
-                tmp +=  row_ptr[k] * col_ptr[k];
-            }
-            if (i_row == i_col) tmp += 1e-6; // numerical stability
 
-             X_T_X[i_row*n_params + i_col] = tmp;
-        }
-    } 
-
-    // Compute cholesky decom. X_T_X = LL^T
     if (debug) {
         float teststop= 0;
     }
-    float* L = cholesky(X_T_X, n_params);
-
+    
     L_L_T_solve(L, rhs, params_out, n_params);
+
     if (debug) {
         // printf("X^TX: \n");print_2d_(X_T_X, n_params, n_params);
         // printf("L: \n"); print_2d_(L, n_params, n_params);
@@ -235,10 +255,10 @@ void regress_cholesky(float* risk_factors, float* target, float *params_out,
         }
     }
 
-    free(X);
-    free(X_T);
-    free(L);
-    free(rhs);
+    // free(X);
+    // free(X_T);
+    // free(L);
+    // free(rhs);
 }
 
 

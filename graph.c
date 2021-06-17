@@ -6,6 +6,7 @@ void init_state_containers(size_t num, stateContainer* containers,
       float* payments, float* costs, size_t n_scens) {
     for (size_t i = 0; i < num; i++)
     {
+        containers[i].t_i = i;
         containers[i].n_states = 0;
         containers[i].n_scens = n_scens;
         containers[i].payments = payments + i*n_scens;

@@ -77,7 +77,7 @@ void mark_nodes_to_skip(stateContainer* containers, size_t num_days, bool consid
     float value_next;
     size_t n_states_total = 0;
     State* tmp_state_from;
-    float reduce_fraction = 0.8;
+    float reduce_fraction = 0.7;
     float threshold;
     srand(1);
     size_t n_skipped = 0;
@@ -117,6 +117,7 @@ void update_contination_value(State* state) {
     float* cont_state = state->continuation_values;
     size_t best_action_idx;
     float expected_value = 0.;
+    float expected_immediate_payoff = 0.;
     float* coeff;
     float delta = 0.;
     State* next_valid_node;
@@ -140,18 +141,19 @@ void update_contination_value(State* state) {
             delta_tmp += next_valid_nodes[action_i]->delta;
         }
         state->delta = delta_tmp / (float)state->n_actions;
+        state->expected_value = next_valid_nodes[1]->expected_value;                            // TODO: Average or
+        // state->continuation_values = next_valid_nodes[1]->continuation_values; // WELL WHAT!?!?
         return;
     }
     
     for (size_t i = 0; i < n_scens; i++)
     {
         max_value = -1e10;
-        strike_spot_diff = strikes[i] - spots[i]; // TODO: Precompute
+        strike_spot_diff = strikes[i] - spots[i];
         for (size_t action_i = 0; action_i < state->n_actions; action_i++)
         {
             next_valid_node = next_valid_nodes[action_i];
             cont_i = (next_valid_node->continuation_values)[i];
-            // cont_i = (state->reachable_states[action_i]->continuation_values)[i];
             v_next = state->value + state->actions[action_i];
             payoff0 = cont_i + strike_spot_diff*(state->actions[action_i]);
             if (payoff0 > max_value) {
@@ -166,22 +168,22 @@ void update_contination_value(State* state) {
         delta += -state->actions[best_action_idx]*spots[i]*spot_mean_inv;
         cont_state[i] = max_value;
         expected_value += max_value;
+        expected_immediate_payoff += strike_spot_diff*(state->actions[best_action_idx]);
         // update continuation for current volume and time in-place
     }
     // printf("%.3f %.3f\n",state->transition_probs[0], state->transition_probs[1]);
-    state->expected_value = expected_value / (float)n_scens;
+    state->expected_value = expected_immediate_payoff / (float)n_scens; // TODO: have expected value and immediate payoff fields; this is just for testing
     float params[4] = {0.,0.,0, 0.};
     if (parent_container->prev) {
-        regress_cholesky(parent_container->prev->payments, state->continuation_values, params, n_scens, 1, 3, true);
+        regress_cholesky(parent_container->prev->payments, state->continuation_values, params, n_scens, 1, 3, true, parent_container->t_i);
 
     } else {
-        regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
+        regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true, parent_container->t_i);
     }
 
     state->delta = delta / (float)n_scens;
 
     memcpy(state->cv_coeff, params, 4);
-        // regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
     free(next_valid_nodes);
 }
 
@@ -224,9 +226,10 @@ void optimize(stateContainer* containers, size_t n_scens) {
     // Compute sensitivites
     ///////////////////////////////////////////////////////////
     
-    float* prob_matrix = calloc(n_steps*365, sizeof(float));
+    float* prob_matrix = calloc(n_steps*n_steps, sizeof(float));
     containers[0].state_ub->ds_ds0 = 1.;
     float delta_total = 0.;
+    float payoff_total = 0.;
     for (size_t t_i = 0; t_i < n_steps-1; t_i++)
     {
         state_iter = containers[t_i].state_ub;
@@ -245,7 +248,8 @@ void optimize(stateContainer* containers, size_t n_scens) {
             // (mean*3*std)*
             state_iter->delta *= state_iter->ds_ds0;
             delta_avg += state_iter->delta;
-            prob_matrix[t_i*365+node_idx] = state_iter->ds_ds0;
+            payoff_total += state_iter->expected_value * state_iter->ds_ds0;
+            prob_matrix[t_i*n_steps+node_idx] = state_iter->ds_ds0;
             node_idx += 1;
             // Next node
             state_iter = state_iter->state_down;
@@ -254,7 +258,8 @@ void optimize(stateContainer* containers, size_t n_scens) {
         delta_total += delta_avg;
         // printf("Delta t_i = %i is: %.3f\n", t_i, delta_avg);
     }
-    // writeMat(prob_matrix, 365, n_steps);
+    writeMat(prob_matrix, 365, n_steps);
+    printf("Total value is: %.3f\n", payoff_total);
     printf("Total delta is: %.3f\n", delta_total);
 
     free(prob_matrix);   
@@ -273,7 +278,7 @@ int main()
         .dcq_min = 0.,
         .dcq_max = 100,
         .tcq = 365*100,
-        .tcq_min_final = 0.
+        .tcq_min_final = 300.*100
     };
 
     float* spot_scens = (float*)malloc(N_SCENS*N_STEPS*sizeof(float));
@@ -294,7 +299,8 @@ int main()
     init_states(N_STEPS, containers, spot_scens, strike_scens, N_SCENS, deal);
     start = clock();
     
-    mark_nodes_to_skip(containers, N_STEPS, false);
+    // mark_nodes_to_skip(containers, N_STEPS, false);
+    //950ms / 4600ms
     optimize(containers, N_SCENS);
     end = clock();
 
