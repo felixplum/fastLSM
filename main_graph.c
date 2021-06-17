@@ -120,13 +120,36 @@ void update_contination_value(State* state) {
     float* coeff;
     float delta = 0.;
     State* next_valid_node;
+    float spot_mean_inv = 1./parent_container->payments_mean;
+    State** next_valid_nodes = calloc(state->n_actions, sizeof(State*));
+
+    
+
+    // Precompute reachable states for action_i
+    for (size_t action_i = 0; action_i < state->n_actions; action_i++)
+    {
+        next_valid_nodes[action_i] =  get_next_computed_node(state->reachable_states[action_i]);
+    }
+
+    if (state->skip_node) {
+        // Copy transition probs. and delta from next ndoes from; TODO only for testing; do interpolation or so 
+        float delta_tmp = 0.;
+        memcpy(state->transition_probs, next_valid_nodes[0]->transition_probs, 4*sizeof(float));
+        for (size_t action_i = 0; action_i < state->n_actions; action_i++)
+        {
+            delta_tmp += next_valid_nodes[action_i]->delta;
+        }
+        state->delta = delta_tmp / (float)state->n_actions;
+        return;
+    }
+    
     for (size_t i = 0; i < n_scens; i++)
     {
         max_value = -1e10;
-        strike_spot_diff = strikes[i] - spots[i];
+        strike_spot_diff = strikes[i] - spots[i]; // TODO: Precompute
         for (size_t action_i = 0; action_i < state->n_actions; action_i++)
         {
-            next_valid_node = get_next_computed_node(state->reachable_states[action_i]);
+            next_valid_node = next_valid_nodes[action_i];
             cont_i = (next_valid_node->continuation_values)[i];
             // cont_i = (state->reachable_states[action_i]->continuation_values)[i];
             v_next = state->value + state->actions[action_i];
@@ -139,7 +162,8 @@ void update_contination_value(State* state) {
         state->transition_probs[best_action_idx] += 1./(float)n_scens;
         // Compute delta
         //coeff = state->reachable_states[best_action_idx]->cv_coeff;
-        //delta += -state->actions[best_action_idx];//  + coeff[1] + 2*coeff[2]*spots[i] + 3*coeff[3]*spots[i]*spots[i];
+        // TODO: 
+        delta += -state->actions[best_action_idx]*spots[i]*spot_mean_inv;
         cont_state[i] = max_value;
         expected_value += max_value;
         // update continuation for current volume and time in-place
@@ -158,6 +182,7 @@ void update_contination_value(State* state) {
 
     memcpy(state->cv_coeff, params, 4);
         // regress_cholesky(spots, state->continuation_values, params, n_scens, 1, 3, true);
+    free(next_valid_nodes);
 }
 
 void writeMat(float* mat, size_t rows, size_t cols) {
@@ -173,63 +198,66 @@ void writeMat(float* mat, size_t rows, size_t cols) {
 }
 
 void optimize(stateContainer* containers, size_t n_scens) {
-    size_t n_steps = N_STEPS;//sizeof(containers)/sizeof(containers);       TODO
+    size_t n_steps = N_STEPS;
     stateContainer* container_t;
     State* state_iter, *state_next;
     float expected_value;
     float v_next;
 
-    // Backward pass
+    // Compute value
+    //////////////////////////////////////////////////////////
+
     for (int t_i = n_steps-2; t_i >= 0; t_i--)
     {
         state_iter = containers[t_i].state_ub;
         // Iter over states top down
         while (state_iter)
         {
-            if (!state_iter->skip_node) {
-                update_contination_value(state_iter);
-            }
+            update_contination_value(state_iter);
             // expected_value = mean_vec(state_iter->continuation_values, n_scens);
             // printf("t=%i, state=%i, expt: %.2f", t_i, state_idx, expected_value);
             state_iter = state_iter->state_down;
         }
     }
     printf("Value of contract %.2f\n", mean_vec(containers[0].state_ub->continuation_values, n_scens));
+    
     // Compute sensitivites
-    // float* prob_matrix = calloc(n_steps*365, sizeof(float));
-    // containers[0].state_ub->ds_ds0 = 1.;
-    // float delta_total = 0.;
-    // for (size_t t_i = 0; t_i < n_steps-1; t_i++)
-    // {
-    //     state_iter = containers[t_i].state_ub;
-    //     // Iter over states top down
-    //     size_t node_idx = 0;
-    //     float delta_avg = 0.;
-    //     while (state_iter)
-    //     {
-    //         for (size_t action_i = 0; action_i < state_iter->n_actions; action_i++)
-    //         {
-    //             state_iter->reachable_states[action_i]->ds_ds0 += 
-    //                 state_iter->ds_ds0 * state_iter->transition_probs[action_i];
-    //         }
-    //         // float mean, std;
-    //         // approx_mean_std(state_iter->continuation_values, n_scens, &mean, &std);
-    //         // (mean*3*std)*
-    //         state_iter->delta *= state_iter->ds_ds0;
-    //         delta_avg += state_iter->delta;
-    //         prob_matrix[t_i*365+node_idx] = state_iter->ds_ds0;
-    //         node_idx += 1;
-    //         // Next node
-    //         state_iter = state_iter->state_down;
-    //     } 
-    //     delta_avg = delta_avg;
-    //     delta_total += delta_avg;
-    //     // printf("Delta t_i = %i is: %.3f\n", t_i, delta_avg);
-    // }
-    // writeMat(prob_matrix, 365, n_steps);
-    // printf("Total delta is: %.3f\n", delta_total);
+    ///////////////////////////////////////////////////////////
+    
+    float* prob_matrix = calloc(n_steps*365, sizeof(float));
+    containers[0].state_ub->ds_ds0 = 1.;
+    float delta_total = 0.;
+    for (size_t t_i = 0; t_i < n_steps-1; t_i++)
+    {
+        state_iter = containers[t_i].state_ub;
+        // Iter over states top down
+        size_t node_idx = 0;
+        float delta_avg = 0.;
+        while (state_iter)
+        {
+            for (size_t action_i = 0; action_i < state_iter->n_actions; action_i++)
+            {
+                state_iter->reachable_states[action_i]->ds_ds0 += 
+                    state_iter->ds_ds0 * state_iter->transition_probs[action_i];
+            }
+            // float mean, std;
+            // approx_mean_std(state_iter->continuation_values, n_scens, &mean, &std);
+            // (mean*3*std)*
+            state_iter->delta *= state_iter->ds_ds0;
+            delta_avg += state_iter->delta;
+            prob_matrix[t_i*365+node_idx] = state_iter->ds_ds0;
+            node_idx += 1;
+            // Next node
+            state_iter = state_iter->state_down;
+        } 
 
-    // free(prob_matrix);   
+        delta_total += delta_avg;
+        // printf("Delta t_i = %i is: %.3f\n", t_i, delta_avg);
+    }
+    // writeMat(prob_matrix, 365, n_steps);
+    printf("Total delta is: %.3f\n", delta_total);
+
+    free(prob_matrix);   
 }
 
 //

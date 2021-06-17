@@ -8,6 +8,7 @@
 #include <math.h> 
 #include <assert.h>
 #include <string.h>
+#include "linalg.h"
 
 typedef struct State State;
 typedef struct stateContainer stateContainer;
@@ -39,6 +40,7 @@ struct stateContainer {
     stateContainer* prev;
     float* costs;           // Costs per scenario (i.e. Strike); there might be costs-per-action-type later on
     float* payments;        // Paypement per scenarion (i.e. Spot price)
+    float payments_mean;
 };
 
 void init_state_containers(size_t num, stateContainer* containers,

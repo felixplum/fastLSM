@@ -12,6 +12,7 @@ void init_state_containers(size_t num, stateContainer* containers,
         containers[i].costs = &(costs[i*n_scens]);
         containers[i].state_lb = NULL;
         containers[i].state_ub = NULL;
+        containers[i].payments_mean = mean_vec(payments, min(1000, n_scens));
         if (i < num-1) containers[i].next = &(containers[i+1]);
         if (i > 0) containers[i].prev = &(containers[i-1]);
     }    
@@ -112,8 +113,8 @@ void remove_action(State* state, float action) {
         if (state->actions[i] == action) {
             int n_actions_to_move = state->n_actions-i-1;
             if (n_actions_to_move > 0) {
-                memmove(state->actions+i+1, state->actions+i, n_actions_to_move);
-                memmove(state->transition_probs+i+1, state->transition_probs+i, n_actions_to_move);
+                memmove(state->actions+i+1, state->actions+i, n_actions_to_move*sizeof(float));
+                memmove(state->transition_probs+i+1, state->transition_probs+i, n_actions_to_move*sizeof(float));
             }
             state->n_actions--;
             return;
